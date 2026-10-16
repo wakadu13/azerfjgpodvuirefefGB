@@ -46,6 +46,13 @@ Tout est généré par le code (modèles 3D, sons, textures) : **aucun fichier e
 | Espace | Sauter (on peut monter sur les caisses) |
 | Échap / P | Pause |
 
+## ⬇️ Télécharger (Windows)
+
+Un exécutable Windows prêt à jouer est fourni : **[`release/BurgerRush.exe`](release/BurgerRush.exe)**.
+Il est autonome (aucune DLL à installer) : téléchargez-le et double-cliquez dessus.
+
+> Windows SmartScreen peut afficher un avertissement car l'exe n'est pas signé : « Informations complémentaires » → « Exécuter quand même ».
+
 ## 🔧 Compilation
 
 Nécessite **raylib 5.5**.
@@ -69,6 +76,12 @@ Si raylib est compilée depuis les sources dans un dossier :
 
 ```bash
 make RAYLIB_PATH=/chemin/vers/raylib
+```
+
+Pour régénérer l'exe Windows depuis Linux (MinGW + raylib compilée pour Windows) :
+
+```bash
+make windows RAYLIB_WIN_PATH=/chemin/vers/raylib-windows
 ```
 
 Sous Linux, les dépendances de raylib sont : `libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl1-mesa-dev`.
