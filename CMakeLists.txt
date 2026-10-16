@@ -17,7 +17,8 @@ if (NOT raylib_FOUND)
     FetchContent_MakeAvailable(raylib)
 endif()
 
-add_executable(burger_rush src/main.c)
+file(GLOB SOURCES src/*.c)
+add_executable(burger_rush ${SOURCES})
 target_link_libraries(burger_rush PRIVATE raylib)
 
 if (UNIX AND NOT APPLE)

@@ -5,7 +5,8 @@
 
 CC      ?= cc
 TARGET  := burger_rush
-SRC     := src/main.c
+SRC     := $(wildcard src/*.c)
+HDR     := $(wildcard src/*.h)
 CFLAGS  += -std=c99 -O2 -Wall -Wextra -Wno-missing-field-initializers
 
 ifdef RAYLIB_PATH
@@ -25,8 +26,8 @@ endif
 
 all: $(TARGET)
 
-$(TARGET): $(SRC)
-	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS)
+$(TARGET): $(SRC) $(HDR)
+	$(CC) $(CFLAGS) $(SRC) -o $@ $(LDFLAGS) $(LDLIBS)
 
 run: $(TARGET)
 	./$(TARGET)
@@ -34,9 +35,9 @@ run: $(TARGET)
 # Exe Windows autonome (cross-compilation MinGW, raylib compilee pour Windows)
 #   make windows RAYLIB_WIN_PATH=/chemin/raylib-windows
 MINGW_CC ?= x86_64-w64-mingw32-gcc
-windows: $(SRC)
+windows: $(SRC) $(HDR)
 	mkdir -p release
-	$(MINGW_CC) -std=c99 -O2 -I$(RAYLIB_WIN_PATH)/src $< -o release/BurgerRush.exe \
+	$(MINGW_CC) -std=c99 -O2 -I$(RAYLIB_WIN_PATH)/src $(SRC) -o release/BurgerRush.exe \
 		-L$(RAYLIB_WIN_PATH)/src -lraylib -lopengl32 -lgdi32 -lwinmm -static -static-libgcc -mwindows
 
 clean:
