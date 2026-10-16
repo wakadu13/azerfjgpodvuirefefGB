@@ -1,0 +1,5 @@
+burger_rush
+burger_rush.exe
+build/
+*.o
+screenshot*.png
