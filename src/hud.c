@@ -510,16 +510,9 @@ Rectangle HudTitleButton(int i) { return StackButton(i, UiHeight()*0.40f, 520, 4
 Rectangle HudPauseButton(int i) { return StackButton(i, UiHeight()*0.52f, 420, 50); }
 Rectangle HudOverButton(int i) { return StackButton(i, UiHeight()*0.74f, 360, 46); }
 Rectangle HudLobbyButton(int i) { return StackButton(i, UiHeight() - 120.0f, 360, 46); }
-// Centre horizontal du pave de saisie de l'ecran REJOINDRE : au milieu de
-// l'ecran, ou a droite dans le navigateur (la liste des parties est a gauche).
-static float JoinPadX(void)
-{
-#if defined(BR_WEB)
-    return UiWidth()*0.77f;
-#else
-    return UiWidth()/2.0f;
-#endif
-}
+// Centre horizontal du pave de saisie de l'ecran REJOINDRE : a droite
+// (la liste des parties en ligne occupe la gauche).
+static float JoinPadX(void) { return UiWidth()*0.77f; }
 
 Rectangle HudJoinButton(int i)
 {
@@ -538,7 +531,6 @@ Rectangle HudJoinKey(int i)
     return (Rectangle){ x0 + (i % 3)*(kw + gap), y0 + (i/3)*(kh + gap), kw, kh };
 }
 
-#if defined(BR_WEB)
 // Liste des parties en ligne (colonne de gauche de l'ecran REJOINDRE)
 // Largeur : 520 unites au plus, la moitie de l'ecran sur un petit ecran.
 Rectangle HudJoinGame(int i)
@@ -554,19 +546,18 @@ static int JoinGameRows(void)
     return n < 1 ? 1 : (n > HUD_MAX_GAMES ? HUD_MAX_GAMES : n);
 }
 
-// Parties ouvertes, triees par code (l'ordre ne change pas sous le doigt
-// quand des joueurs arrivent) et limitees a ce qui tient a l'ecran.
-int HudJoinGames(SockGame *out)
+// Parties ouvertes, triees par code ou par nom (l'ordre ne change pas sous
+// le doigt quand des joueurs arrivent) et limitees a ce qui tient a l'ecran.
+int HudJoinGames(NetGameInfo *out)
 {
-    int n = SockListGames(out, HUD_MAX_GAMES), rows = JoinGameRows();
+    int n = NetListGames(out, HUD_MAX_GAMES), rows = JoinGameRows();
     for (int i = 1; i < n; i++)          // tri par insertion (quelques elements)
         for (int j = i; j > 0 && out[j].code < out[j - 1].code; j--)
         {
-            SockGame t = out[j]; out[j] = out[j - 1]; out[j - 1] = t;
+            NetGameInfo t = out[j]; out[j] = out[j - 1]; out[j - 1] = t;
         }
     return n < rows ? n : rows;
 }
-#endif
 
 // Texte de la touche i du pave (meme ordre qu'un pave de telephone).
 const char *HudJoinKeyLabel(int i)
@@ -593,7 +584,7 @@ void HudDrawTitle(int w, int h)
     // Navigateur (page claude.ai) : parties en ligne, jusqu'a MAX_PLAYERS joueurs
     static const char *labels[] = { "SOLO", "ECRAN PARTAGE (2 joueurs)", "CREER une partie en ligne", "PARTIES EN LIGNE (rejoindre)" };
 #else
-    static const char *labels[] = { "SOLO", "ECRAN PARTAGE (2 joueurs)", "HEBERGER une partie reseau", "REJOINDRE une partie reseau" };
+    static const char *labels[] = { "SOLO", "ECRAN PARTAGE (2 joueurs)", "HEBERGER une partie (Internet + Wi-Fi)", "REJOINDRE une partie (liste en ligne)" };
 #endif
     static const char *keys[] = { "1", "2", "3", "4" };
     TitleChoice choices[4];
@@ -680,16 +671,16 @@ void HudDrawJoin(int w, int h, const char *address)
 {
     int cx = w/2;
     DrawRectangle(0, 0, w, h, (Color){ 0, 0, 0, 150 });
-#if defined(BR_WEB)
-    // Navigateur : a gauche la liste des parties en ligne, a droite le code
+    // A gauche la liste des parties en ligne, a droite le code (navigateur)
+    // ou l'adresse IP de l'hote (versions installees, meme reseau Wi-Fi)
     TextCenter("PARTIES EN LIGNE", cx, (int)(h*0.04f), 44, (Color){ 255, 200, 60, 255 });
     int lx = (int)(w*0.30f), px = (int)(w*0.77f);
     TextCenter("Clique sur une partie pour la rejoindre :", lx, (int)(h*0.13f), 20, LIGHTGRAY);
-    SockGame games[HUD_MAX_GAMES];
+    NetGameInfo games[HUD_MAX_GAMES];
     int ng = HudJoinGames(games);
     for (int i = 0; i < ng; i++)
     {
-        const SockGame *g = &games[i];
+        const NetGameInfo *g = &games[i];
         bool full = g->players >= g->maxPlayers;
         char label[96];
         if (full) snprintf(label, sizeof(label), "%s   %d/%d  PLEINE", g->name, g->players, g->maxPlayers);
@@ -702,18 +693,20 @@ void HudDrawJoin(int w, int h, const char *address)
         DrawRectangleRoundedLinesEx(r, 0.3f, 6, 2.0f, full ? GRAY : (Color){ 120, 200, 255, 255 });
         TextCenter(label, (int)(r.x + r.width/2), (int)r.y + 11, 20, full ? GRAY : RAYWHITE);
     }
-    if (ng == 0)
+    if (NetListStatus()[0])        // serveur de la liste pas encore joint (ou non configure)
+        TextCenter(NetListStatus(), lx, (int)(h*0.24f), 20, (Color){ 255, 200, 120, 255 });
+    else if (ng == 0)
     {
         TextCenter("Aucune partie ouverte pour l'instant.", lx, (int)(h*0.24f), 20, GRAY);
         TextCenter("Cree la tienne depuis le menu : les autres", lx, (int)(h*0.24f) + 30, 18, GRAY);
         TextCenter("la verront apparaitre ici.", lx, (int)(h*0.24f) + 54, 18, GRAY);
     }
+#if defined(BR_WEB)
     TextCenter("... ou tape son code :", px, (int)(h*0.13f), 20, LIGHTGRAY);
-    cx = px;
 #else
-    TextCenter("REJOINDRE UNE PARTIE", cx, (int)(h*0.04f), 44, (Color){ 255, 200, 60, 255 });
-    TextCenter("Adresse IP de l'hote (affichee sur son ecran) :", cx, (int)(h*0.13f), 20, LIGHTGRAY);
+    TextCenter("... ou son adresse IP (meme Wi-Fi) :", px, (int)(h*0.13f), 20, LIGHTGRAY);
 #endif
+    cx = px;
 
     // Champ de saisie
     int bw = 280;
@@ -738,7 +731,7 @@ void HudDrawJoin(int w, int h, const char *address)
 #if defined(BR_WEB)
     TextCenter("Chaque joueur ouvre la meme page du jeu sur claude.ai, connecte a son compte.", w/2, h - 24, 16, GRAY);
 #else
-    TextCenter("Meme reseau Wi-Fi que l'hote (ou port UDP 27016 ouvert chez lui).", cx, h - 24, 16, GRAY);
+    TextCenter("La liste montre toutes les parties hebergees, sur Internet comme en Wi-Fi.", w/2, h - 24, 16, GRAY);
 #endif
 }
 
@@ -760,7 +753,7 @@ void HudDrawLobby(int w, int h)
 #if defined(BR_WEB)
         TextCenter("Ta partie apparait dans PARTIES EN LIGNE chez tous les joueurs. Son code :", cx, y + 70, 20, LIGHTGRAY);
 #else
-        TextCenter("Les autres joueurs choisissent REJOINDRE et tapent :", cx, y + 70, 20, LIGHTGRAY);
+        TextCenter("Ta partie apparait dans REJOINDRE chez tous les joueurs. Sur le meme Wi-Fi :", cx, y + 70, 20, LIGHTGRAY);
 #endif
         for (int i = 0; i < n && i < 2; i++) TextCenter(ips[i], cx, y + 98 + i*34, 32, RAYWHITE);
         if (n == 0) TextCenter("(adresse IP introuvable)", cx, y + 98, 26, GRAY);
@@ -773,6 +766,11 @@ void HudDrawLobby(int w, int h)
 #endif
         TextCenter(buf, cx, y, 16, GRAY);
         y += 28;
+#if !defined(BR_WEB)
+        // Visibilite dans la liste en ligne (serveur joint, adresse Internet trouvee...)
+        TextCenter(NetHostListState(), cx, y - 6, 16, (Color){ 120, 200, 255, 255 });
+        y += 20;
+#endif
     }
     else y += 90;
 

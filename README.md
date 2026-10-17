@@ -51,8 +51,8 @@ Au menu :
 |---|---|
 | **1** | Solo |
 | **2** | Coop **écran partagé** : 2 joueurs sur le même PC |
-| **3** | **Héberger** / **créer** une partie (jusqu'à 50 joueurs) |
-| **4** | **Rejoindre** une partie (navigateur : **liste des parties en ligne**) |
+| **3** | **Héberger** / **créer** une partie (jusqu'à 50 joueurs, visible dans la liste en ligne) |
+| **4** | **Rejoindre** une partie : **liste de toutes les parties en ligne** |
 
 Dans tous les modes à plusieurs :
 
@@ -68,14 +68,15 @@ L'écran se coupe en deux, chaque joueur a sa vue, son HUD et son radar. Contrô
 
 ![Coop](docs/coop.png)
 
-### Réseau (plusieurs PC)
+### Réseau et parties en ligne (PC, Mac, Linux, Android, iOS)
 
-1. Sur un PC, appuyez sur **3** : l'écran affiche son **adresse IP** (par ex. `192.168.1.20`).
-2. Sur les autres PC (jusqu'à 49), appuyez sur **4**, tapez cette adresse puis **Entrée**.
-3. Quand tout le monde est dans la salle d'attente, l'hôte appuie sur **Entrée**.
+1. Sur un appareil, appuyez sur **3** (HÉBERGER) : la partie apparaît dans la **liste en ligne** de tous les joueurs, et l'écran affiche aussi son **adresse IP** locale (par ex. `192.168.1.20`).
+2. Sur les autres (jusqu'à 49), appuyez sur **4** (REJOINDRE) : la liste montre **toutes les parties hébergées, sur Internet comme sur le même Wi-Fi** (nom, joueurs, vague). Un clic pour entrer. On peut aussi taper l'adresse IP de l'hôte (même Wi-Fi).
+3. Quand tout le monde est dans la salle d'attente, l'hôte appuie sur **Entrée** (d'autres peuvent arriver ensuite).
 
-- Fonctionne entre Windows, macOS et Linux, sur le même réseau (Wi-Fi / box).
-- Par Internet : l'hôte doit ouvrir le **port UDP 27016** sur sa box (redirection de port).
+- La liste passe par un petit serveur MQTT sur Internet (adresse et identifiants dans `src/config.h`, `LOBBY_*`) qui ne sert que de tableau d'affichage : très peu de données. La partie elle-même se joue en direct entre les appareils.
+- Pour passer les box, chaque appareil demande son adresse Internet à un serveur STUN public, puis l'hôte « perce » sa box vers chaque nouveau joueur (*hole punching*, `src/lobby.c`). Ça marche avec la plupart des box ; si une box ou un opérateur (certains réseaux 4G) le bloque, l'hôte peut ouvrir le **port UDP 27016** sur sa box.
+- Sans serveur configuré (`LOBBY_HOST` vide), la liste reste vide et on rejoint par adresse IP comme avant.
 - Le pare-feu peut demander l'autorisation au premier lancement : acceptez.
 - En réseau, **Échap** ouvre un menu mais **ne met pas la partie en pause** (Q pour quitter).
 - Un joueur peut rejoindre une partie déjà commencée.
@@ -200,7 +201,8 @@ Une manette Bluetooth fonctionne aussi.
 | `src/main.c` | Point d'entrée, fenêtre, boucle principale |
 | `src/game.c` | États du jeu (titre, salle d'attente, partie, pause, game over) et écran partagé |
 | `src/net.c` | Multijoueur réseau : l'hôte simule la partie et envoie l'état du monde, chaque client gère son joueur et envoie ses tirs |
-| `src/netsock.c` | Sockets UDP pour Windows, macOS et Linux |
+| `src/netsock.c` | Sockets UDP (et TCP pour la liste en ligne) pour Windows, macOS, Linux, Android et iOS |
+| `src/lobby.c` | Liste des parties en ligne : client MQTT, adresse Internet (STUN) et perçage des box |
 | `src/player.c` | Commandes (clavier/souris, manette, 2ᵉ clavier), déplacements, vie, caméra, modèle du coéquipier |
 | `src/weapon.c` | HK416 : tir, recul, rechargement, modèle 3D et mains |
 | `src/enemy.c` | Mercenaires : apparition, IA, dégâts |

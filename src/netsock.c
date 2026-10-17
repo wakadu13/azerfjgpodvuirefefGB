@@ -43,6 +43,8 @@
     #include <ifaddrs.h>
     #include <netdb.h>
     #include <netinet/in.h>
+    #include <netinet/tcp.h>
+    #include <sys/select.h>
     #include <sys/socket.h>
     #include <unistd.h>
     typedef int sock_t;                 // sous POSIX une socket est un simple descripteur de fichier
@@ -239,5 +241,144 @@ int SockLocalIPs(char out[][40], int max)
 // Deux adresses sont egales si l'IP et le port correspondent (deux clients derriere la meme
 // box peuvent avoir la meme IP publique mais des ports differents).
 bool SockAddrEqual(NetAddr a, NetAddr b) { return a.ip == b.ip && a.port == b.port; }
+
+void SockAddrText(NetAddr a, char *out, int cap)
+{
+    struct in_addr ip;
+    char text[INET_ADDRSTRLEN] = "";
+    ip.s_addr = a.ip;
+    inet_ntop(AF_INET, &ip, text, sizeof(text));
+    snprintf(out, cap, "%s:%u", text, (unsigned)ntohs(a.port));
+}
+
+// Port local reellement attribue a la socket UDP (utile quand le systeme l'a choisi : port 0)
+unsigned short SockLocalPort(void)
+{
+    if (sock == BAD_SOCKET) return 0;
+    struct sockaddr_in local;
+    socklen_t len = sizeof(local);
+    if (getsockname(sock, (struct sockaddr *)&local, &len) != 0) return 0;
+    return ntohs(local.sin_port);
+}
+
+void SockHostName(char *out, int cap)
+{
+#if defined(_WIN32)
+    if (!StartupWinsock()) { out[0] = '\0'; return; }
+#endif
+    char name[256];
+    if (gethostname(name, sizeof(name)) != 0) name[0] = '\0';
+    name[sizeof(name) - 1] = '\0';
+    snprintf(out, cap, "%s", name);
+}
+
+//----------------------------------------------------------------------------------
+// TCP (liste des parties en ligne)
+//----------------------------------------------------------------------------------
+static sock_t tcp = BAD_SOCKET;
+static int tcpState;               // 0 fermee, 1 connexion en cours, 2 connectee
+
+void TcpClose(void)
+{
+    if (tcp != BAD_SOCKET) CloseSock(tcp);
+    tcp = BAD_SOCKET;
+    tcpState = 0;
+}
+
+// Resolution du nom (bloquante, une fois), puis connexion non bloquante :
+// connect() rend la main tout de suite, TcpState() dira quand elle aboutit.
+bool TcpOpen(const char *host, unsigned short port)
+{
+#if defined(_WIN32)
+    if (!StartupWinsock()) return false;
+#endif
+    TcpClose();
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(host, NULL, &hints, &res) != 0 || !res) return false;
+    struct sockaddr_in addr = *(struct sockaddr_in *)res->ai_addr;
+    freeaddrinfo(res);
+    addr.sin_port = htons(port);
+
+    tcp = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (tcp == BAD_SOCKET) return false;
+#if defined(_WIN32)
+    u_long nonBlocking = 1;
+    ioctlsocket(tcp, FIONBIO, &nonBlocking);
+#else
+    fcntl(tcp, F_SETFL, fcntl(tcp, F_GETFL, 0) | O_NONBLOCK);
+  #if defined(SO_NOSIGPIPE)
+    // macOS / iOS : une ecriture sur une connexion coupee ne doit pas tuer le jeu (SIGPIPE)
+    int one = 1;
+    setsockopt(tcp, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+  #endif
+#endif
+    // Les petits paquets (MQTT) partent tout de suite, sans attendre d'en grouper plusieurs
+    int noDelay = 1;
+    setsockopt(tcp, IPPROTO_TCP, TCP_NODELAY, (const char *)&noDelay, sizeof(noDelay));
+
+    if (connect(tcp, (struct sockaddr *)&addr, sizeof(addr)) == 0) { tcpState = 2; return true; }
+#if defined(_WIN32)
+    bool pending = (WSAGetLastError() == WSAEWOULDBLOCK);
+#else
+    bool pending = (errno == EINPROGRESS);
+#endif
+    if (!pending) { TcpClose(); return false; }
+    tcpState = 1;
+    return true;
+}
+
+// Connexion en cours : elle a abouti quand la socket devient "ecrivable" ;
+// SO_ERROR dit alors si c'est un succes ou un refus.
+int TcpState(void)
+{
+    if (tcpState != 1) return tcpState;
+    fd_set w;
+    FD_ZERO(&w);
+    FD_SET(tcp, &w);
+    struct timeval zero = { 0, 0 };
+    if (select((int)tcp + 1, NULL, &w, NULL, &zero) <= 0) return 1;   // pas encore
+    int err = 0;
+    socklen_t len = sizeof(err);
+    getsockopt(tcp, SOL_SOCKET, SO_ERROR, (char *)&err, &len);
+    if (err != 0) { TcpClose(); return 0; }
+    tcpState = 2;
+    return 2;
+}
+
+int TcpSend(const void *data, int len)
+{
+    if (tcpState != 2) return -1;
+#if defined(MSG_NOSIGNAL)
+    int n = (int)send(tcp, (const char *)data, len, MSG_NOSIGNAL);   // Linux / Android : pas de SIGPIPE
+#else
+    int n = (int)send(tcp, (const char *)data, len, 0);
+#endif
+    if (n >= 0) return n;
+#if defined(_WIN32)
+    if (WSAGetLastError() == WSAEWOULDBLOCK) return 0;
+#else
+    if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+#endif
+    TcpClose();
+    return -1;
+}
+
+int TcpRecv(void *buf, int cap)
+{
+    if (tcpState != 2) return -1;
+    int n = (int)recv(tcp, (char *)buf, cap, 0);
+    if (n > 0) return n;
+    if (n == 0) { TcpClose(); return -1; }   // connexion fermee par le serveur
+#if defined(_WIN32)
+    if (WSAGetLastError() == WSAEWOULDBLOCK) return 0;
+#else
+    if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+#endif
+    TcpClose();
+    return -1;
+}
 
 #endif   // !BR_WEB

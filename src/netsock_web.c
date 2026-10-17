@@ -118,6 +118,9 @@ int SockLocalIPs(char out[][40], int max)
 
 bool SockAddrEqual(NetAddr a, NetAddr b) { return a.ip == b.ip && a.port == b.port; }
 
+// Navigateur : une "adresse" est juste un numero de joueur
+void SockAddrText(NetAddr a, char *out, int cap) { snprintf(out, cap, "joueur %u", a.ip); }
+
 void SockAnnounce(int players, int maxPlayers, int wave, bool playing)
 {
     if (opened) znet_announce(gameCode, players, maxPlayers, wave, playing ? 1 : 0);

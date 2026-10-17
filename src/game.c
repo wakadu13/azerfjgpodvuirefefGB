@@ -264,18 +264,15 @@ static void UpdateJoin(void)
             else if (len < cap) { joinAddress[len++] = key[0]; joinAddress[len] = '\0'; }
         }
         if (erase && len > 0) joinAddress[len - 1] = '\0';
-#if defined(BR_WEB)
-        // Clic sur une partie de la liste en ligne : on la rejoint directement avec son code
-        SockGame games[HUD_MAX_GAMES];
+        // Clic sur une partie de la liste en ligne : on la rejoint directement
+        NetGameInfo games[HUD_MAX_GAMES];
         int ng = HudJoinGames(games);
         for (int i = 0; i < ng; i++)
             if (UiButtonHit(HudJoinGame(i)))
             {
-                snprintf(joinAddress, sizeof(joinAddress), "%04d", games[i].code);
-                NetJoin(joinAddress);
+                NetJoinListed(&games[i]);
                 return;
             }
-#endif
         // Entree ou bouton SE CONNECTER : lance la connexion (resultat lu plus tard via NetGetStatus)
         if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || UiButtonHit(HudJoinButton(0))) NetJoin(joinAddress);
     }
@@ -375,6 +372,7 @@ void GameUpdate(float dt)
 {
     G.time += dt;
     UiUpdate();       // suivi des doigts (boutons au toucher dans le navigateur)
+    NetWatchList(G.state == ST_JOIN);   // ecran REJOINDRE : suivre la liste des parties en ligne
     NetReceive(dt);   // applique d'abord ce qui est arrive par le reseau
 
     // Client : connexion perdue ou refusee

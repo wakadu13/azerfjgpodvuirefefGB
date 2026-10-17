@@ -38,6 +38,21 @@
 #endif
 #define NET_TIMEOUT        6.0f    // secondes sans nouvelles avant deconnexion
 
+// Liste des parties en ligne des versions installees (voir lobby.h) :
+// serveur MQTT (port 1883, sans chiffrement) qui sert de tableau d'affichage.
+// LOBBY_HOST vide = liste desactivee (on rejoint alors par adresse IP).
+#define LOBBY_HOST  ""
+#define LOBBY_PORT  1883
+#define LOBBY_USER  ""
+#define LOBBY_PASS  ""
+// Serveur STUN public : donne a chaque jeu son adresse vue depuis Internet
+#define STUN_HOST   "stun.l.google.com"
+#define STUN_PORT   19302
+
+// TO_STR(LOBBY_PORT) -> "1883" : ecrit la valeur d'une constante dans une chaine
+#define TO_STR_(x)  #x
+#define TO_STR(x)   TO_STR_(x)
+
 // Poussins du stand (ce que les mercenaires viennent voler)
 #define MAX_CHICKS    12      // taille du tableau de poussins
 #define START_CHICKS  12      // poussins presents au debut d'une partie

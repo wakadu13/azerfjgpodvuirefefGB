@@ -68,4 +68,20 @@ void NetRecordFeed(Color c, const char *text);
 void NetReportHit(int enemy, float dmg, bool head, Vector3 pos, Vector3 dir, NetHitKind kind);
 void NetSuppress(bool on);             // effets purement locaux (non retransmis)
 
+// Liste des parties en ligne : toutes les parties hebergees, meme hors du reseau local
+// (navigateur : page claude.ai ; versions installees : serveur de config.h, voir lobby.h)
+#define NET_LIST_MAX 16
+typedef struct {
+    int code;                // navigateur : code a 4 chiffres de la partie
+    char id[12];             // versions installees : identifiant de la partie
+    char name[48];           // "Partie de ..."
+    int players, maxPlayers, wave;
+    bool playing;            // lancee (sinon : salle d'attente)
+} NetGameInfo;
+void NetWatchList(bool on);                       // ecran REJOINDRE ouvert : suivre la liste
+int NetListGames(NetGameInfo *out, int max);      // parties ouvertes, renvoie leur nombre
+const char *NetListStatus(void);                  // etat de la liste ("" = tout va bien)
+const char *NetHostListState(void);               // hote : visibilite de sa partie
+bool NetJoinListed(const NetGameInfo *g);         // rejoint une partie de la liste
+
 #endif

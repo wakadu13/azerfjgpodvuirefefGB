@@ -39,12 +39,10 @@ Rectangle HudLobbyButton(int i);    // 0 lancer (hote), 1 retour
 Rectangle HudJoinButton(int i);     // 0 se connecter, 1 retour
 Rectangle HudJoinKey(int i);        // pave numerique (12 touches)
 const char *HudJoinKeyLabel(int i); // texte de la touche i du pave ("0".."9", "." ou "<" pour effacer)
-#if defined(BR_WEB)
-#include "netsock.h"
+#include "net.h"
 #define HUD_MAX_GAMES 12
-Rectangle HudJoinGame(int i);       // ligne i de la liste des parties en ligne
-int HudJoinGames(SockGame *out);    // parties affichees (out : HUD_MAX_GAMES cases), renvoie leur nombre
-#endif
+Rectangle HudJoinGame(int i);          // ligne i de la liste des parties en ligne
+int HudJoinGames(NetGameInfo *out);    // parties affichees (out : HUD_MAX_GAMES cases), renvoie leur nombre
 
 void HudDrawTitle(int w, int h);                      // menu principal
 void HudDrawPause(int w, int h, bool network);        // pause (ou menu non bloquant en reseau)

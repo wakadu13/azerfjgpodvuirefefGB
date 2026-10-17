@@ -47,6 +47,7 @@
 #include "hud.h"
 #include "audio.h"
 #include "harpoon.h"
+#include "lobby.h"
 
 #include "raymath.h"
 
@@ -57,10 +58,7 @@
 #include <string.h>
 
 #define NET_MAGIC    0x48535242u   // "BRSH"
-// TO_TEXT(MAX_PLAYERS) -> "50" : ecrit la valeur d'une constante dans une chaine
-#define TO_TEXT_(x)  #x
-#define TO_TEXT(x)   TO_TEXT_(x)
-#define NET_VERSION  4             // a incrementer a chaque changement du format des paquets
+#define NET_VERSION  5             // a incrementer a chaque changement du format des paquets
 #define PACKET_MAX   16384         // taille max d'un paquet (assez pour un SNAPSHOT a 50 joueurs et 160 mercenaires)
 #define MAX_EVENTS   64            // effets en attente d'envoi entre deux paquets (le surplus est perdu)
 #if defined(BR_WEB)
@@ -94,9 +92,15 @@ typedef struct {
 typedef struct { uint32_t id; Color c; char text[96]; } NetFeedMsg;
 
 // Ce que l'hote sait d'un client connecte (indexe par numero de joueur, l'entree 0 = l'hote lui-meme).
+// Un joueur de la liste en ligne essaie les deux adresses de l'hote (Internet et
+// reseau local) : il peut donc arriver par deux chemins. Son jeton (tire au hasard,
+// envoye dans HELLO) permet de le reconnaitre ; alt garde le second chemin.
 typedef struct {
     bool used;          // emplacement occupe
     NetAddr addr;       // adresse IP + port du client (pour lui repondre et le reconnaitre)
+    NetAddr alt;        // autre adresse du meme client (hasAlt)
+    bool hasAlt;
+    uint32_t token;     // jeton du client (0 = aucun)
     float silence;      // secondes depuis le dernier paquet
     uint32_t lastHit;   // derniere touche appliquee
 } RemoteClient;
@@ -120,6 +124,11 @@ static uint32_t nextFeedId = 1;             // prochain id de message (0 = empla
 
 // Client
 static NetAddr hostAddr;            // adresse de l'hote
+// Partie de la liste en ligne : l'hote a deux adresses (Internet et reseau local).
+// Les HELLO partent vers les deux ; la premiere qui repond devient hostAddr.
+static NetAddr hostAlt;
+static bool hasAlt, joinOnline;
+static uint32_t helloToken;         // jeton envoye dans HELLO (voir RemoteClient)
 static NetHit hits[MAX_HITS];       // touches envoyees mais pas encore confirmees par l'hote
 static int hitCount;                // nombre d'entrees valides dans hits[]
 static uint32_t nextHitId;          // dernier id de touche attribue
@@ -302,6 +311,8 @@ static void ResetState(void)
     sendT = silenceT = helloT = 0;     // 0 = premier envoi (HELLO, STATE...) des la prochaine frame
     lastFeedSeen = 0;
     suppress = false;
+    hasAlt = joinOnline = false;
+    helloToken = (uint32_t)GetRandomValue(1, 0x7FFFFFFF);
     error[0] = '\0';
 }
 
@@ -330,6 +341,9 @@ bool NetHost(void)
     role = NET_HOST;
     status = NET_CONNECTED;
     localId = recordOrigin = 0;
+#if !defined(BR_WEB)
+    LobbyHostStart();       // annonce de la partie dans la liste en ligne
+#endif
     return true;
 }
 
@@ -376,6 +390,10 @@ bool NetJoin(const char *address)
 // BYE n'est envoye qu'une fois : s'il se perd, le delai d'inactivite prendra le relais.
 void NetStop(void)
 {
+#if !defined(BR_WEB)
+    LobbyHostStop();        // efface l'annonce de la partie
+    LobbyJoinStop();
+#endif
     if (role == NET_HOST)
     {
         for (int i = 0; i < MAX_PLAYERS; i++) if (clients[i].used) SendSimple(clients[i].addr, PKT_BYE);
@@ -434,7 +452,8 @@ void NetReportHit(int enemy, float dmg, bool head, Vector3 pos, Vector3 dir, Net
 // La boucle commence a 1 : l'emplacement 0 est celui de l'hote.
 static int FindClient(NetAddr a)
 {
-    for (int i = 1; i < MAX_PLAYERS; i++) if (clients[i].used && SockAddrEqual(clients[i].addr, a)) return i;
+    for (int i = 1; i < MAX_PLAYERS; i++)
+        if (clients[i].used && (SockAddrEqual(clients[i].addr, a) || (clients[i].hasAlt && SockAddrEqual(clients[i].alt, a)))) return i;
     return -1;
 }
 
@@ -458,7 +477,7 @@ static void SendRefuse(NetAddr to, const char *reason)
     SockSend(to, b.data, b.pos);
 }
 
-// Paquet HELLO recu : contenu = 1 octet (NET_VERSION du client).
+// Paquet HELLO recu : contenu = 1 octet (NET_VERSION du client) + u32 jeton du client.
 // Attribue un emplacement libre et repond WELCOME (contenu = 1 octet : numero de joueur).
 // Si le client est deja connu (son WELCOME precedent s'est perdu et il renvoie HELLO),
 // on lui renvoie simplement le meme numero.
@@ -466,14 +485,18 @@ static void HostHandleHello(Buf *b, NetAddr from)
 {
     int version = GetU8(b);
     if (version != NET_VERSION) { SendRefuse(from, "Version du jeu differente de celle de l'hote"); return; }
+    uint32_t token = GetU32(b);
 
     int id = FindClient(from);
+    // Meme jeton qu'un client deja connu : c'est lui, arrive par son autre chemin
+    for (int i = 1; i < MAX_PLAYERS && id < 0 && token; i++)
+        if (clients[i].used && clients[i].token == token) { id = i; clients[i].alt = from; clients[i].hasAlt = true; }
     if (id < 0)
     {
         // Premier emplacement (1..MAX_PLAYERS-1) libre a la fois cote reseau et cote joueurs
         for (int i = 1; i < MAX_PLAYERS && id < 0; i++) if (!clients[i].used && !players[i].connected) id = i;
-        if (id < 0) { SendRefuse(from, "La partie est pleine (" TO_TEXT(MAX_PLAYERS) " joueurs)"); return; }
-        clients[id] = (RemoteClient){ true, from, 0, 0 };
+        if (id < 0) { SendRefuse(from, "La partie est pleine (" TO_STR(MAX_PLAYERS) " joueurs)"); return; }
+        clients[id] = (RemoteClient){ .used = true, .addr = from, .token = token };
         PlayerJoin(id);
     }
     uint8_t data[16];
@@ -582,6 +605,12 @@ static void HostReceive(int type, Buf *b, NetAddr from)
 {
     int id = FindClient(from);
     if (id >= 0) clients[id].silence = 0;
+    // Le client joue par son autre chemin : c'est desormais celui ou on lui repond
+    if (id >= 0 && type == PKT_STATE && !SockAddrEqual(from, clients[id].addr))
+    {
+        clients[id].alt = clients[id].addr;
+        clients[id].addr = from;
+    }
     switch (type)
     {
         case PKT_HELLO: HostHandleHello(b, from); break;
@@ -740,17 +769,19 @@ static void HostUpdate(float dt)
         if (clients[i].silence > NET_TIMEOUT) DropClient(i, "a perdu la connexion");
     }
 
-#if defined(BR_WEB)
-    // Navigateur : la partie s'annonce dans la liste des parties de la page
-    // claude.ai (2 fois par seconde ; rien n'est renvoye si rien n'a change)
+    // La partie s'annonce dans la liste des parties en ligne, 2 fois par seconde
+    // (rien n'est renvoye au serveur si rien n'a change)
     static float announceT;
     announceT -= dt;
     if (announceT <= 0)
     {
         announceT = 0.5f;
+#if defined(BR_WEB)
         SockAnnounce(PlayersConnected(), MAX_PLAYERS, G.wave, G.state != ST_LOBBY);
-    }
+#else
+        LobbyHostInfo(PlayersConnected(), MAX_PLAYERS, G.wave, G.state != ST_LOBBY);
 #endif
+    }
 
     // Cadence fixe : on decompte le temps et on n'envoie que quand il est ecoule
     sendT -= dt;
@@ -1050,7 +1081,12 @@ static void ClientHandleSnapshot(Buf *b)
 // Aiguillage d'un paquet recu par le client. Tout paquet ne venant pas de l'hote est ignore.
 static void ClientReceive(int type, Buf *b, NetAddr from)
 {
-    if (!SockAddrEqual(from, hostAddr)) return;
+    if (!SockAddrEqual(from, hostAddr))
+    {
+        // Partie en ligne : l'autre adresse de l'hote a repondu en premier, on la garde
+        if (hasAlt && status == NET_CONNECTING && SockAddrEqual(from, hostAlt)) { hostAddr = hostAlt; hasAlt = false; }
+        else return;
+    }
     silenceT = 0;                           // l'hote est vivant
     switch (type)
     {
@@ -1062,6 +1098,10 @@ static void ClientReceive(int type, Buf *b, NetAddr from)
             if (b->err || localId <= 0 || localId >= MAX_PLAYERS) { localId = -1; break; }
             status = NET_CONNECTED;
             firstSnapshot = true;
+            hasAlt = false;
+#if !defined(BR_WEB)
+            LobbyJoinStop();        // connecte : plus besoin de demander a entrer
+#endif
             PlayersResetNet(localId);
             break;
         case PKT_REFUSE:
@@ -1125,14 +1165,21 @@ static void ClientUpdate(float dt)
             BeginPacket(&b, data, PKT_HELLO);
             b.size = sizeof(data);
             PutU8(&b, NET_VERSION);
+            PutU32(&b, helloToken);
             SockSend(hostAddr, b.data, b.pos);
+            if (hasAlt) SockSend(hostAlt, b.data, b.pos);
             helloT = 0.5f;
         }
-        // Abandon apres 8 secondes sans aucune reponse
-        if (silenceT > 8.0f)
+        // Abandon apres 8 secondes sans aucune reponse (15 s pour une partie en ligne :
+        // il faut le temps de trouver son adresse Internet et de percer les box)
+        if (silenceT > (joinOnline ? 15.0f : 8.0f))
         {
-            snprintf(error, sizeof(error), "Pas de reponse de l'hote (adresse ? pare-feu ?)");
+            if (joinOnline) snprintf(error, sizeof(error), "Pas de reponse de l'hote (une box bloque la connexion ?)");
+            else snprintf(error, sizeof(error), "Pas de reponse de l'hote (adresse ? pare-feu ?)");
             status = NET_FAILED;
+#if !defined(BR_WEB)
+            LobbyJoinStop();
+#endif
         }
         return;
     }
@@ -1163,6 +1210,9 @@ void NetReceive(float dt)
     int n;
     while ((n = SockRecv(data, sizeof(data), &from)) > 0)
     {
+#if !defined(BR_WEB)
+        if (LobbyOnUdp(data, n, from)) continue;   // reponse STUN ou paquet de percage
+#endif
         Buf b = { data, 0, n, false };
         uint32_t magic = GetU32(&b);
         int type = GetU8(&b);
@@ -1177,6 +1227,109 @@ void NetReceive(float dt)
 // A appeler a la fin de chaque frame : envoie ce qu'il faut selon le role
 void NetSend(float dt)
 {
+#if !defined(BR_WEB)
+    LobbyUpdate(dt);        // liste des parties en ligne (connexion, annonces, percage)
+#endif
     if (role == NET_HOST) HostUpdate(dt);
     else if (role == NET_CLIENT) ClientUpdate(dt);
+}
+
+//----------------------------------------------------------------------------------
+// Liste des parties en ligne
+//----------------------------------------------------------------------------------
+// Navigateur : salon commun de la page claude.ai (netsock_web.c).
+// Versions installees : serveur MQTT de la liste en ligne (lobby.c).
+void NetWatchList(bool on)
+{
+#if !defined(BR_WEB)
+    LobbyWatch(on);
+#else
+    (void)on;
+#endif
+}
+
+int NetListGames(NetGameInfo *out, int max)
+{
+    int n = 0;
+#if defined(BR_WEB)
+    SockGame list[NET_LIST_MAX];
+    int count = SockListGames(list, max < NET_LIST_MAX ? max : NET_LIST_MAX);
+    for (int i = 0; i < count; i++, n++)
+    {
+        out[n] = (NetGameInfo){ 0 };
+        out[n].code = list[i].code;
+        snprintf(out[n].name, sizeof(out[n].name), "%s", list[i].name);
+        out[n].players = list[i].players; out[n].maxPlayers = list[i].maxPlayers;
+        out[n].wave = list[i].wave; out[n].playing = list[i].playing;
+    }
+#else
+    LobbyGame list[NET_LIST_MAX];
+    int count = LobbyGames(list, max < NET_LIST_MAX ? max : NET_LIST_MAX);
+    for (int i = 0; i < count; i++, n++)
+    {
+        out[n] = (NetGameInfo){ 0 };
+        memcpy(out[n].id, list[i].id, sizeof(out[n].id));   // meme taille (12)
+        out[n].id[sizeof(out[n].id) - 1] = '\0';
+        snprintf(out[n].name, sizeof(out[n].name), "%s", list[i].name);
+        out[n].players = list[i].players; out[n].maxPlayers = list[i].maxPlayers;
+        out[n].wave = list[i].wave; out[n].playing = list[i].playing;
+    }
+#endif
+    return n;
+}
+
+const char *NetListStatus(void)
+{
+#if defined(BR_WEB)
+    return "";
+#else
+    return LobbyStatus();
+#endif
+}
+
+const char *NetHostListState(void)
+{
+#if defined(BR_WEB)
+    return "";
+#else
+    return LobbyHostState();
+#endif
+}
+
+// Rejoint une partie de la liste
+bool NetJoinListed(const NetGameInfo *g)
+{
+#if defined(BR_WEB)
+    char code[8];
+    snprintf(code, sizeof(code), "%04d", g->code);
+    return NetJoin(code);
+#else
+    LobbyGame list[NET_LIST_MAX];
+    int count = LobbyGames(list, NET_LIST_MAX), i = 0;
+    while (i < count && strcmp(list[i].id, g->id) != 0) i++;
+    NetStop();
+    ResetState();
+    if (i == count || (!list[i].pub.ip && !list[i].lan.ip))
+    {
+        snprintf(error, sizeof(error), "Cette partie n'est plus disponible");
+        status = NET_FAILED;
+        return false;
+    }
+    // Adresse Internet en priorite, adresse locale en secours (meme box que l'hote)
+    hostAddr = list[i].pub.ip ? list[i].pub : list[i].lan;
+    hostAlt = list[i].lan;
+    hasAlt = list[i].pub.ip && list[i].lan.ip;
+    if (!SockOpen(0))
+    {
+        snprintf(error, sizeof(error), "Impossible d'ouvrir une socket");
+        status = NET_FAILED;
+        return false;
+    }
+    role = NET_CLIENT;
+    status = NET_CONNECTING;
+    localId = -1;
+    joinOnline = true;
+    LobbyJoinStart(list[i].id);     // adresse Internet (STUN) puis demandes d'entree a l'hote
+    return true;
+#endif
 }

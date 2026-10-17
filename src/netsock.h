@@ -44,6 +44,23 @@ bool SockResolve(const char *host, unsigned short port, NetAddr *out);
 int SockLocalIPs(char out[][40], int max);         // adresses IPv4 de cette machine
 // Vrai si les deux adresses designent la meme machine ET le meme port.
 bool SockAddrEqual(NetAddr a, NetAddr b);
+// Adresse -> texte "a.b.c.d:port" (out : 32 caracteres au moins)
+void SockAddrText(NetAddr a, char *out, int cap);
+
+#if !defined(BR_WEB)
+// Port local de la socket UDP ouverte (ordre machine), 0 si fermee
+unsigned short SockLocalPort(void);
+// Nom de cette machine (pour nommer la partie dans la liste en ligne), "" si inconnu
+void SockHostName(char *out, int cap);
+
+// Connexion TCP minimale (une seule a la fois), utilisee pour la liste des
+// parties en ligne (lobby.c). Tout est non bloquant : rien ne fige le jeu.
+bool TcpOpen(const char *host, unsigned short port);   // lance la connexion (false si nom inconnu)
+int TcpState(void);                                    // 0 fermee ou en echec, 1 en cours, 2 connectee
+int TcpSend(const void *data, int len);                // octets envoyes, -1 si la connexion est perdue
+int TcpRecv(void *buf, int cap);                       // octets lus, 0 si rien, -1 si la connexion est perdue
+void TcpClose(void);
+#endif
 // Envoie le meme paquet a n adresses (l'etat du monde, de l'hote vers tous les clients).
 // Navigateur : un seul message, diffuse a tous les joueurs de la partie.
 bool SockSendMany(const NetAddr *to, int n, const void *data, int len);
