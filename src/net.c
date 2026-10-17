@@ -28,6 +28,13 @@
  * numero de la derniere touche appliquee, et ignore les doublons deja traites.)
  * Les effets (sons, particules) peuvent se perdre sans gravite.
  * Toutes les cibles (x86, ARM) etant little-endian, les nombres sont copies tels quels.
+ *
+ * Jusqu'a 50 joueurs : pour que l'etat du monde reste petit, la plupart des
+ * nombres a virgule sont "quantifies" sur 2 octets (PutQ16 : positions au
+ * centimetre, angles et minuteries au millieme...). Le SNAPSHOT est le meme
+ * pour tous les clients (une seule construction, envoye a chacun ou diffuse
+ * d'un coup dans le navigateur) ; chaque client y trouve son propre accuse
+ * de reception dans une petite table.
  */
 #include "net.h"
 #include "netsock.h"
@@ -50,9 +57,17 @@
 #include <string.h>
 
 #define NET_MAGIC    0x48535242u   // "BRSH"
-#define NET_VERSION  3             // a incrementer a chaque changement du format des paquets
-#define PACKET_MAX   8192          // taille max d'un paquet (largement assez pour un SNAPSHOT complet)
+// TO_TEXT(MAX_PLAYERS) -> "50" : ecrit la valeur d'une constante dans une chaine
+#define TO_TEXT_(x)  #x
+#define TO_TEXT(x)   TO_TEXT_(x)
+#define NET_VERSION  4             // a incrementer a chaque changement du format des paquets
+#define PACKET_MAX   16384         // taille max d'un paquet (assez pour un SNAPSHOT a 50 joueurs et 160 mercenaires)
 #define MAX_EVENTS   64            // effets en attente d'envoi entre deux paquets (le surplus est perdu)
+#if defined(BR_WEB)
+#define STATE_EVENTS 24            // navigateur : effets par paquet STATE (le paquet doit tenir dans 4 Ko)
+#else
+#define STATE_EVENTS MAX_EVENTS
+#endif
 #define MAX_HITS     32            // touches non confirmees que le client garde en memoire
 #define FEED_RING    8             // derniers messages du fil d'actualite renvoyes en boucle par l'hote
 
@@ -138,7 +153,21 @@ static void PutI16(Buf *b, int v) { int16_t x = (int16_t)v; Put(b, &x, 2); }    
 static void PutU32(Buf *b, uint32_t v) { Put(b, &v, 4); }
 static void PutI32(Buf *b, int v) { int32_t x = v; Put(b, &x, 4); }
 static void PutF32(Buf *b, float v) { Put(b, &v, 4); }                            // float IEEE 754
-static void PutVec3(Buf *b, Vector3 v) { PutF32(b, v.x); PutF32(b, v.y); PutF32(b, v.z); }   // 12 octets
+static void PutU16(Buf *b, int v) { uint16_t x = (uint16_t)v; Put(b, &x, 2); }   // 2 octets, 0..65535 (ou compteur qui reboucle)
+// Nombre a virgule compresse sur 2 octets : v*scale arrondi, borne a -32768..32767.
+// Ex. scale = 100 : precision du centimetre, de -327 a +327 metres.
+static void PutQ16(Buf *b, float v, float scale) { PutI16(b, (int)Clamp(roundf(v*scale), -32768, 32767)); }
+// Position au centimetre (6 octets au lieu de 12)
+static void PutPos(Buf *b, Vector3 v) { PutQ16(b, v.x, 100); PutQ16(b, v.y, 100); PutQ16(b, v.z, 100); }
+// Valeur de 0 a 1 sur un octet (0..255)
+static void PutUnit(Buf *b, float v) { PutU8(b, (int)(Clamp(v, 0, 1)*255)); }
+// Ramene un angle dans [-PI, PI] (le lissage a l'arrivee prend le chemin le plus court)
+static float WrapAngle(float a)
+{
+    a = fmodf(a + PI, 2*PI);
+    if (a < 0) a += 2*PI;
+    return a - PI;
+}
 // Chaine : 1 octet de longueur puis les caracteres, sans le '\0' final (tronquee a 95)
 static void PutStr(Buf *b, const char *s)
 {
@@ -162,7 +191,10 @@ static int GetI16(Buf *b) { int16_t x; Get(b, &x, 2); return x; }
 static uint32_t GetU32(Buf *b) { uint32_t x; Get(b, &x, 4); return x; }
 static int GetI32(Buf *b) { int32_t x; Get(b, &x, 4); return x; }
 static float GetF32(Buf *b) { float x; Get(b, &x, 4); return x; }
-static Vector3 GetVec3(Buf *b) { Vector3 v; v.x = GetF32(b); v.y = GetF32(b); v.z = GetF32(b); return v; }
+static int GetU16(Buf *b) { uint16_t x; Get(b, &x, 2); return x; }
+static float GetQ16(Buf *b, float scale) { return GetI16(b)/scale; }
+static Vector3 GetPos(Buf *b) { Vector3 v; v.x = GetQ16(b, 100); v.y = GetQ16(b, 100); v.z = GetQ16(b, 100); return v; }
+static float GetUnit(Buf *b) { return GetU8(b)/255.0f; }
 // Lit une chaine ecrite par PutStr dans out (cap = taille du tableau, '\0' compris).
 // Toujours terminee par '\0' ; chaine vide si le paquet etait incomplet.
 static void GetStr(Buf *b, char *out, int cap)
@@ -192,18 +224,21 @@ static void SendSimple(NetAddr to, int type)
     SockSend(to, b.data, b.pos);
 }
 
-// Ajoute au paquet la liste des effets en attente :
-// 1 octet = nombre N, puis N x 35 octets (type, origin, param, a, b, f1, f2).
+// Ajoute au paquet au plus 'max' effets en attente :
+// 1 octet = nombre N, puis N x 17 octets : type, origin, param (3 x u8),
+// a et b au centimetre (2 x 6 octets), f1 et f2 au centieme sur un octet
+// (hauteur et volume d'un son : de 0 a 2,55).
 // N tient sur un octet car MAX_EVENTS (64) < 256.
-static void PutEvents(Buf *b)
+static void PutEvents(Buf *b, int max)
 {
-    PutU8(b, eventCount);
-    for (int i = 0; i < eventCount; i++)
+    int n = eventCount < max ? eventCount : max;
+    PutU8(b, n);
+    for (int i = 0; i < n; i++)
     {
         const NetEvent *e = &events[i];
         PutU8(b, e->type); PutU8(b, e->origin); PutU8(b, e->param);
-        PutVec3(b, e->a); PutVec3(b, e->b);
-        PutF32(b, e->f1); PutF32(b, e->f2);
+        PutPos(b, e->a); PutPos(b, e->b);
+        PutU8(b, (int)Clamp(roundf(e->f1*100), 0, 255)); PutU8(b, (int)Clamp(roundf(e->f2*100), 0, 255));
     }
 }
 
@@ -212,8 +247,8 @@ static NetEvent GetEvent(Buf *b)
 {
     NetEvent e;
     e.type = (uint8_t)GetU8(b); e.origin = (uint8_t)GetU8(b); e.param = (uint8_t)GetU8(b);
-    e.a = GetVec3(b); e.b = GetVec3(b);
-    e.f1 = GetF32(b); e.f2 = GetF32(b);
+    e.a = GetPos(b); e.b = GetPos(b);
+    e.f1 = GetU8(b)/100.0f; e.f2 = GetU8(b)/100.0f;
     return e;
 }
 
@@ -435,9 +470,9 @@ static void HostHandleHello(Buf *b, NetAddr from)
     int id = FindClient(from);
     if (id < 0)
     {
-        // Premier emplacement (1..3) libre a la fois cote reseau et cote joueurs
+        // Premier emplacement (1..MAX_PLAYERS-1) libre a la fois cote reseau et cote joueurs
         for (int i = 1; i < MAX_PLAYERS && id < 0; i++) if (!clients[i].used && !players[i].connected) id = i;
-        if (id < 0) { SendRefuse(from, "La partie est pleine (4 joueurs)"); return; }
+        if (id < 0) { SendRefuse(from, "La partie est pleine (" TO_TEXT(MAX_PLAYERS) " joueurs)"); return; }
         clients[id] = (RemoteClient){ true, from, 0, 0 };
         PlayerJoin(id);
     }
@@ -466,22 +501,23 @@ static void HostApplyHit(int id, const NetHit *h)
 // Paquet STATE recu du client 'id'. Contenu (dans l'ordre) :
 //   u8  round           manche que le client croit jouer (8 bits de poids faible de G.round)
 //   u8  respawnSeen     derniere reapparition vue par le client (8 bits de poids faible)
-//   vec3 pos, vec3 vel  position et vitesse (12 + 12 octets)
-//   f32 yaw, pitch, bob orientation de la camera et balancement de la marche
+//   pos, vel            position (cm) et vitesse (cm/s), 6 + 6 octets
+//   q16 yaw, pitch ; f32 bob   orientation de la camera et balancement de la marche
 //   u8  flags           bit0 au sol, bit1 sprint, bit2 rechargement, bit3 harpon en main, bit4 harpon charge
-//   f32 muzzleT, reloadT, reloadDur, ads, sprintT, harpoonT   minuteries/animations de l'arme
+//   q16 muzzleT, reloadT, reloadDur ; u8 ads ; q16 sprintT, harpoonT   minuteries/animations de l'arme
 //   i16 ammo, reserve, harpoons                              munitions
-//   u8  nombre de touches, puis par touche : u32 id, u8 enemy, u8 head, u8 kind, f32 dmg, vec3 pos, vec3 dir
+//   u8  nombre de touches, puis par touche : u32 id, u8 enemy, u8 head, u8 kind, f32 dmg, pos (cm), q16 x 3 dir
 //   u8  nombre d'effets, puis les effets (voir PutEvents)
 static void HostHandleState(Buf *b, int id)
 {
     Player *p = &players[id];
     int round = GetU8(b), respawnSeen = GetU8(b);
-    Vector3 pos = GetVec3(b), vel = GetVec3(b);
-    float yaw = GetF32(b), pitch = GetF32(b), bob = GetF32(b);
+    Vector3 pos = GetPos(b), vel = GetPos(b);
+    float yaw = GetQ16(b, 10000), pitch = GetQ16(b, 10000), bob = GetF32(b);
     int flags = GetU8(b);
-    float muzzleT = GetF32(b), reloadT = GetF32(b), reloadDur = GetF32(b), ads = GetF32(b), sprintT = GetF32(b);
-    float harpoonT = GetF32(b);
+    float muzzleT = GetQ16(b, 1000), reloadT = GetQ16(b, 1000), reloadDur = GetQ16(b, 1000);
+    float ads = GetUnit(b), sprintT = GetQ16(b, 1000);
+    float harpoonT = GetQ16(b, 1000);
     int ammo = GetI16(b), reserve = GetI16(b), harpoonCount = GetI16(b);
     if (b->err) return;
 
@@ -520,7 +556,7 @@ static void HostHandleState(Buf *b, int id)
     {
         NetHit h;
         h.id = GetU32(b); h.enemy = (uint8_t)GetU8(b); h.head = (uint8_t)GetU8(b); h.kind = (uint8_t)GetU8(b); h.dmg = GetF32(b);
-        h.pos = GetVec3(b); h.dir = GetVec3(b);
+        h.pos = GetPos(b); h.dir.x = GetQ16(b, 10000); h.dir.y = GetQ16(b, 10000); h.dir.z = GetQ16(b, 10000);
         if (b->err || h.id <= clients[id].lastHit) continue;
         clients[id].lastHit = h.id;     // sera renvoye comme accuse de reception dans le SNAPSHOT
         // Une touche perimee ou hors phase de jeu est consideree comme recue mais ignoree
@@ -555,65 +591,79 @@ static void HostReceive(int type, Buf *b, NetAddr from)
     }
 }
 
-// Ecrit un joueur dans le SNAPSHOT (meme ordre que ClientReadPlayer) :
+// Ecrit un joueur connecte dans le SNAPSHOT (meme ordre que ClientReadPlayer), 41 octets :
+//   u8  numero du joueur
 //   u8  flags   bit0 connecte, bit1 vivant, bit2 au sol, bit3 rechargement, bit4 sprint,
 //               bit5 harpon en main, bit6 harpon charge
-//   f32 hp ; i16 kills, headshots
-//   i32 ammoGrant, harpoonGrant   compteurs cumules de munitions/harpons donnes par l'hote
-//   f32 harpoonT ; u8 respawnCount
-//   vec3 pos ; f32 vel.x, vel.z (vel.y non transmis : inutile a l'affichage)
-//   f32 yaw, pitch, bob, muzzleT, reloadT, reloadDur, ads, sprintT
-static void PutPlayer(Buf *b, const Player *p)
+//   u8  hp (arrondi au superieur : 0,3 PV ne doit pas devenir 0 = mort) ; i16 kills, headshots
+//   u16 ammoGrant, harpoonGrant   compteurs cumules de munitions/harpons (16 bits qui rebouclent)
+//   q16 harpoonT ; u8 respawnCount
+//   pos (cm) ; q16 vel.x, vel.z (cm/s ; vel.y inutile a l'affichage)
+//   q16 yaw, pitch (millieme de radian) ; f32 bob (phase qui grandit sans fin : pas compressee)
+//   q16 muzzleT, reloadT, reloadDur (millieme de seconde) ; u8 ads (0..1) ; q16 sprintT
+static void PutPlayer(Buf *b, int idx, const Player *p)
 {
     int flags = (p->connected ? 1 : 0) | (p->alive ? 2 : 0) | (p->grounded ? 4 : 0) | (p->w.reloading ? 8 : 0) | (p->sprinting ? 16 : 0)
               | (p->w.active == WPN_HARPOON ? 32 : 0) | (p->w.harpoonLoaded ? 64 : 0);
+    PutU8(b, idx);
     PutU8(b, flags);
-    PutF32(b, p->hp);
+    PutU8(b, (int)Clamp(ceilf(p->hp), 0, 255));
     PutI16(b, p->kills); PutI16(b, p->headshots);
-    PutI32(b, p->ammoGrant); PutI32(b, p->harpoonGrant);
-    PutF32(b, p->w.harpoonT);
+    PutU16(b, p->ammoGrant); PutU16(b, p->harpoonGrant);
+    PutQ16(b, p->w.harpoonT, 1000);
     PutU8(b, p->respawnCount);
-    PutVec3(b, p->pos);
-    PutF32(b, p->vel.x); PutF32(b, p->vel.z);
-    PutF32(b, p->yaw); PutF32(b, p->pitch); PutF32(b, p->bob);
-    PutF32(b, p->w.muzzleT); PutF32(b, p->w.reloadT); PutF32(b, p->w.reloadDur);
-    PutF32(b, p->w.ads); PutF32(b, p->w.sprintT);
+    PutPos(b, p->pos);
+    PutQ16(b, p->vel.x, 100); PutQ16(b, p->vel.z, 100);
+    PutQ16(b, WrapAngle(p->yaw), 10000); PutQ16(b, p->pitch, 10000); PutF32(b, p->bob);
+    PutQ16(b, p->w.muzzleT, 1000); PutQ16(b, p->w.reloadT, 1000); PutQ16(b, p->w.reloadDur, 1000);
+    PutUnit(b, p->w.ads); PutQ16(b, p->w.sprintT, 1000);
 }
 
-// Ecrit un mercenaire actif (meme ordre que ClientReadEnemies) :
+// Ecrit un mercenaire actif (meme ordre que ClientReadEnemies), 32 octets :
 //   u8 idx, type, state, flags (bit1 projete, bit2 en l'air)
 //   u8 camo, skin, paint, gear    apparence (tirage aleatoire fait par l'hote)
-//   vec3 pos ; f32 yaw, spin, hp, sz, fat, grabT, deadT
-//   u8 hitFlash, attackAnim       valeurs 0..1 compressees sur un octet (x255) pour gagner de la place
+//   pos (cm) ; q16 yaw ; f32 spin (saltos en vol : peut depasser plusieurs tours)
+//   u16 hp ; q16 sz, fat (millieme) ; q16 grabT, deadT (centieme de seconde)
+//   u8 hitFlash, attackAnim       valeurs 0..1 sur un octet
 static void PutEnemy(Buf *b, int idx, const Enemy *e)
 {
     PutU8(b, idx); PutU8(b, e->type); PutU8(b, e->state);
     PutU8(b, (e->launched ? 2 : 0) | (e->airborne ? 4 : 0));
     PutU8(b, e->camo); PutU8(b, e->skin); PutU8(b, e->paint); PutU8(b, e->gear);
-    PutVec3(b, e->pos); PutF32(b, e->yaw); PutF32(b, e->spin);
-    PutF32(b, e->hp); PutF32(b, e->sz); PutF32(b, e->fat);
-    PutF32(b, e->grabT); PutF32(b, e->deadT);
-    // Clamp borne a [0,1] avant la conversion, sinon l'octet deborderait
-    PutU8(b, (int)(Clamp(e->hitFlash, 0, 1)*255)); PutU8(b, (int)(Clamp(e->attackAnim, 0, 1)*255));
+    PutPos(b, e->pos); PutQ16(b, WrapAngle(e->yaw), 10000); PutF32(b, e->spin);
+    PutU16(b, (int)Clamp(ceilf(e->hp), 0, 65535));
+    PutQ16(b, e->sz, 1000); PutQ16(b, e->fat, 1000);
+    PutQ16(b, e->grabT, 100); PutQ16(b, e->deadT, 100);
+    PutUnit(b, e->hitFlash); PutUnit(b, e->attackAnim);
 }
 
-// Construit et envoie le SNAPSHOT destine au client 'id' (data = tampon de PACKET_MAX octets).
-// Contenu :
-//   u8  id du destinataire ; u32 derniere touche appliquee (accuse de reception)
+// Construit le SNAPSHOT, le meme pour tous les clients, dans 'data' (PACKET_MAX octets).
+// Renvoie sa taille, ou 0 s'il deborde. Contenu :
+//   u8 N + N accuses de reception : u8 numero du client, u32 derniere touche appliquee
 //   etat de la partie : u8 state, u8 round, i16 wave, toSpawn, alive, u8 flags (bit0 boss attendu,
 //                       bit1 entracte), f32 interT, bannerT, i32 score, u8 chicks, chaine overReason
-//   MAX_PLAYERS joueurs (PutPlayer)
+//   u8 N + N joueurs connectes (PutPlayer)
 //   u8 N + N mercenaires actifs (PutEnemy)
 //   u8 N + N bonus : u8 idx, u8 type, f32 x, f32 z, f32 t
 //   u8 N + N messages du fil : u32 id, u8 r, g, b, chaine
 //   effets (PutEvents)
 // L'etat est complet a chaque fois : un paquet perdu est simplement remplace par le suivant.
-static void HostSendSnapshot(int id, uint8_t *data)
+static int BuildSnapshot(uint8_t *data)
 {
     Buf b;
     BeginPacket(&b, data, PKT_SNAPSHOT);
-    PutU8(&b, id);
-    PutU32(&b, clients[id].lastHit);
+    // Pour chaque liste : un octet de nombre d'elements, complete apres coup
+    // (on reserve l'octet a countPos, on ecrit les elements, puis on y reporte le total)
+    int countPos = b.pos, count = 0;
+    PutU8(&b, 0);
+    for (int i = 1; i < MAX_PLAYERS; i++)
+    {
+        if (!clients[i].used) continue;
+        PutU8(&b, i);
+        PutU32(&b, clients[i].lastHit);
+        count++;
+    }
+    b.data[countPos] = (uint8_t)count;
 
     // Partie
     PutU8(&b, G.state); PutU8(&b, G.round);
@@ -623,11 +673,19 @@ static void HostSendSnapshot(int id, uint8_t *data)
     PutI32(&b, G.score); PutU8(&b, G.chicks);
     PutStr(&b, G.overReason);
 
-    for (int i = 0; i < MAX_PLAYERS; i++) PutPlayer(&b, &players[i]);
+    countPos = b.pos;
+    count = 0;
+    PutU8(&b, 0);
+    for (int i = 0; i < MAX_PLAYERS; i++)
+    {
+        if (!players[i].connected) continue;   // emplacements libres : pas envoyes
+        PutPlayer(&b, i, &players[i]);
+        count++;
+    }
+    b.data[countPos] = (uint8_t)count;
 
-    // Pour chaque liste : un octet de nombre d'elements, complete apres coup
-    // (on reserve l'octet a countPos, on ecrit les elements, puis on y reporte le total)
-    int countPos = b.pos, count = 0;
+    countPos = b.pos;
+    count = 0;
     PutU8(&b, 0);
     for (int i = 0; i < MAX_ENEMIES; i++)
     {
@@ -647,7 +705,7 @@ static void HostSendSnapshot(int id, uint8_t *data)
         Vector3 pos;
         float t;
         if (!PickupGet(i, &type, &pos, &t)) continue;
-        PutU8(&b, i); PutU8(&b, type); PutF32(&b, pos.x); PutF32(&b, pos.z); PutF32(&b, t);
+        PutU8(&b, i); PutU8(&b, type); PutQ16(&b, pos.x, 100); PutQ16(&b, pos.z, 100); PutQ16(&b, t, 100);
         count++;
     }
     b.data[countPos] = (uint8_t)count;
@@ -666,13 +724,13 @@ static void HostSendSnapshot(int id, uint8_t *data)
     }
     b.data[countPos] = (uint8_t)count;
 
-    PutEvents(&b);
+    PutEvents(&b, MAX_EVENTS);
     // Si le paquet a deborde (err), on prefere ne rien envoyer plutot qu'un paquet tronque
-    if (!b.err) SockSend(clients[id].addr, b.data, b.pos);
+    return b.err ? 0 : b.pos;
 }
 
 // Travail de l'hote a chaque fin de frame : detecte les clients muets puis, NET_SNAPSHOT_RATE
-// fois par seconde, envoie un SNAPSHOT a chaque client.
+// fois par seconde, envoie le SNAPSHOT a tous les clients.
 static void HostUpdate(float dt)
 {
     for (int i = 1; i < MAX_PLAYERS; i++)
@@ -682,13 +740,28 @@ static void HostUpdate(float dt)
         if (clients[i].silence > NET_TIMEOUT) DropClient(i, "a perdu la connexion");
     }
 
+#if defined(BR_WEB)
+    // Navigateur : la partie s'annonce dans la liste des parties de la page
+    // claude.ai (2 fois par seconde ; rien n'est renvoye si rien n'a change)
+    static float announceT;
+    announceT -= dt;
+    if (announceT <= 0)
+    {
+        announceT = 0.5f;
+        SockAnnounce(PlayersConnected(), MAX_PLAYERS, G.wave, G.state != ST_LOBBY);
+    }
+#endif
+
     // Cadence fixe : on decompte le temps et on n'envoie que quand il est ecoule
     sendT -= dt;
     if (sendT > 0) return;
     sendT = 1.0f/NET_SNAPSHOT_RATE;
-    // static : tampon de 8 Ko reutilise, evite de le poser sur la pile a chaque envoi
+    // static : tampon de 16 Ko reutilise, evite de le poser sur la pile a chaque envoi
     static uint8_t data[PACKET_MAX];
-    for (int i = 1; i < MAX_PLAYERS; i++) if (clients[i].used) HostSendSnapshot(i, data);
+    static NetAddr to[MAX_PLAYERS];
+    int n = 0, len = BuildSnapshot(data);
+    for (int i = 1; i < MAX_PLAYERS; i++) if (clients[i].used) to[n++] = clients[i].addr;
+    if (len > 0 && n > 0) SockSendMany(to, n, data, len);   // navigateur : un seul envoi pour tous
     eventCount = 0;     // effets envoyes a tous : la file est videe
 }
 
@@ -725,42 +798,47 @@ static void ClientApplyLocalPlayer(Player *p, int flags, float hp, int ammoGrant
     }
     // Les dons de munitions sont des compteurs cumules : on applique la difference avec la
     // derniere valeur vue. Un paquet perdu ne fait donc rien rater (la difference s'accumule)
-    // et un paquet repete ne donne rien deux fois.
-    if (ammoGrant != p->ammoGrantSeen)
+    // et un paquet repete ne donne rien deux fois. Les compteurs voyagent sur 16 bits :
+    // (int16_t)(nouveau - ancien) donne le bon ecart meme quand le compteur reboucle.
+    int ammoDiff = (int16_t)(uint16_t)(ammoGrant - p->ammoGrantSeen);
+    if (ammoDiff != 0)
     {
-        int d = ammoGrant - p->ammoGrantSeen;
-        p->ammoGrantSeen = ammoGrant;
+        int d = ammoDiff;
+        p->ammoGrantSeen += d;
         if (d > 0)
         {
             p->w.reserve = (p->w.reserve + d > MAX_RESERVE) ? MAX_RESERVE : p->w.reserve + d;
             PlaySfx(SND_PICK, 1.0f, 0.6f);
         }
     }
-    if (harpoonGrant != p->harpoonGrantSeen)
+    int harpoonDiff = (int16_t)(uint16_t)(harpoonGrant - p->harpoonGrantSeen);
+    if (harpoonDiff != 0)
     {
-        int d = harpoonGrant - p->harpoonGrantSeen;
-        p->harpoonGrantSeen = harpoonGrant;
+        int d = harpoonDiff;
+        p->harpoonGrantSeen += d;
         if (d > 0) p->w.harpoons = (p->w.harpoons + d > HARPOON_MAX) ? HARPOON_MAX : p->w.harpoons + d;
     }
 }
 
-// Lit le joueur i du SNAPSHOT (format : voir PutPlayer).
+// Lit un joueur du SNAPSHOT (format : voir PutPlayer) ; renvoie son numero (-1 si erreur).
 // Pour le joueur local, seules les infos decidees par l'hote sont prises (ClientApplyLocalPlayer) ;
 // pour les autres, tout est recopie et sera affiche avec lissage.
-static void ClientReadPlayer(Buf *b, int i)
+static int ClientReadPlayer(Buf *b)
 {
-    Player *p = &players[i];
+    int i = GetU8(b);
     int flags = GetU8(b);
-    float hp = GetF32(b);
+    float hp = (float)GetU8(b);
     int kills = GetI16(b), headshots = GetI16(b);
-    int ammoGrant = GetI32(b), harpoonGrant = GetI32(b);
-    float harpoonT = GetF32(b);
+    int ammoGrant = GetU16(b), harpoonGrant = GetU16(b);
+    float harpoonT = GetQ16(b, 1000);
     int respawnCount = GetU8(b);
-    Vector3 pos = GetVec3(b);
-    float vx = GetF32(b), vz = GetF32(b);
-    float yaw = GetF32(b), pitch = GetF32(b), bob = GetF32(b);
-    float muzzleT = GetF32(b), reloadT = GetF32(b), reloadDur = GetF32(b), ads = GetF32(b), sprintT = GetF32(b);
-    if (b->err) return;
+    Vector3 pos = GetPos(b);
+    float vx = GetQ16(b, 100), vz = GetQ16(b, 100);
+    float yaw = GetQ16(b, 10000), pitch = GetQ16(b, 10000), bob = GetF32(b);
+    float muzzleT = GetQ16(b, 1000), reloadT = GetQ16(b, 1000), reloadDur = GetQ16(b, 1000);
+    float ads = GetUnit(b), sprintT = GetQ16(b, 1000);
+    if (b->err || i >= MAX_PLAYERS) { b->err = true; return -1; }
+    Player *p = &players[i];
 
     bool connected = flags & 1;
     if (i == localId)
@@ -768,7 +846,7 @@ static void ClientReadPlayer(Buf *b, int i)
         p->kills = kills;
         p->headshots = headshots;
         ClientApplyLocalPlayer(p, flags, hp, ammoGrant, harpoonGrant, respawnCount, pos);
-        return;
+        return i;
     }
     if (connected && !p->connected) p->pos = pos;   // nouveau joueur : pas de lissage
     p->connected = connected;
@@ -796,6 +874,7 @@ static void ClientReadPlayer(Buf *b, int i)
     p->w.reloadDur = reloadDur;
     p->w.ads = ads;
     p->w.sprintT = sprintT;
+    return i;
 }
 
 // Lit la liste des mercenaires du SNAPSHOT (format : voir PutEnemy). Ceux absents de la
@@ -808,10 +887,11 @@ static void ClientReadEnemies(Buf *b)
     {
         int idx = GetU8(b), type = GetU8(b), state = GetU8(b), eflags = GetU8(b);
         int camo = GetU8(b), skin = GetU8(b), paint = GetU8(b), gear = GetU8(b);
-        Vector3 pos = GetVec3(b);
-        float yaw = GetF32(b), spin = GetF32(b);
-        float hp = GetF32(b), sz = GetF32(b), fat = GetF32(b), grabT = GetF32(b), deadT = GetF32(b);
-        float hitFlash = GetU8(b)/255.0f, attackAnim = GetU8(b)/255.0f;   // octet -> 0..1
+        Vector3 pos = GetPos(b);
+        float yaw = GetQ16(b, 10000), spin = GetF32(b);
+        float hp = (float)GetU16(b), sz = GetQ16(b, 1000), fat = GetQ16(b, 1000);
+        float grabT = GetQ16(b, 100), deadT = GetQ16(b, 100);
+        float hitFlash = GetUnit(b), attackAnim = GetUnit(b);   // octet -> 0..1
         if (b->err || idx >= MAX_ENEMIES) break;
 
         Enemy *e = &enemies[idx];
@@ -850,7 +930,7 @@ static void ClientReadEnemies(Buf *b)
     for (int i = 0; i < MAX_ENEMIES; i++) if (!seen[i]) enemies[i].active = false;
 }
 
-// Lit la liste des bonus (u8 idx, u8 type, f32 x, f32 z, f32 t) ; les absents sont retires.
+// Lit la liste des bonus (u8 idx, u8 type, q16 x, z au cm, q16 t au centieme) ; les absents sont retires.
 static void ClientReadPickups(Buf *b)
 {
     bool seen[MAX_PICKUPS] = { 0 };
@@ -858,7 +938,7 @@ static void ClientReadPickups(Buf *b)
     for (int n = 0; n < count && !b->err; n++)
     {
         int idx = GetU8(b), type = GetU8(b);
-        float x = GetF32(b), z = GetF32(b), t = GetF32(b);
+        float x = GetQ16(b, 100), z = GetQ16(b, 100), t = GetQ16(b, 100);
         if (b->err || idx >= MAX_PICKUPS) break;
         seen[idx] = true;
         PickupSet(idx, true, type, V3(x, 0, z), t);
@@ -893,13 +973,22 @@ static void ClientReadFeed(Buf *b)
     lastFeedSeen = newest;
 }
 
-// Traite un SNAPSHOT complet (format : voir HostSendSnapshot). L'ordre de lecture doit etre
+// Traite un SNAPSHOT complet (format : voir BuildSnapshot). L'ordre de lecture doit etre
 // exactement celui de l'ecriture, sinon toutes les valeurs suivantes seraient decalees.
 static void ClientHandleSnapshot(Buf *b)
 {
-    int id = GetU8(b);
-    uint32_t ack = GetU32(b);
-    if (b->err || id != localId) return;    // paquet qui ne nous est pas destine
+    // Table des accuses de reception : on cherche notre ligne. Absente = l'hote ne
+    // nous compte pas (encore) parmi ses clients : snapshot ignore.
+    int nacks = GetU8(b);
+    bool found = false;
+    uint32_t ack = 0;
+    for (int i = 0; i < nacks && !b->err; i++)
+    {
+        int id = GetU8(b);
+        uint32_t a = GetU32(b);
+        if (id == localId) { found = true; ack = a; }
+    }
+    if (b->err || !found) return;
 
     // Touches confirmees par l'hote
     // On garde seulement les touches d'id > ack (compactage du tableau sur place) :
@@ -932,7 +1021,17 @@ static void ClientHandleSnapshot(Buf *b)
     snprintf(G.overReason, sizeof(G.overReason), "%s", reason);
     if (newRound) GameNetRoundStarted();     // le jeu remet a zero ce qui doit l'etre
 
-    for (int i = 0; i < MAX_PLAYERS && !b->err; i++) ClientReadPlayer(b, i);
+    // Joueurs : ceux absents de la liste sont deconnectes (sauf nous-memes)
+    bool seen[MAX_PLAYERS] = { 0 };
+    int np = GetU8(b);
+    for (int n = 0; n < np && !b->err; n++)
+    {
+        int i = ClientReadPlayer(b);
+        if (i >= 0) seen[i] = true;
+    }
+    if (b->err) return;
+    for (int i = 0; i < MAX_PLAYERS; i++)
+        if (!seen[i] && i != localId) { players[i].connected = false; players[i].alive = false; }
     ClientReadEnemies(b);
     ClientReadPickups(b);
     ClientReadFeed(b);
@@ -991,21 +1090,21 @@ static void ClientSendState(void)
     // Ces deux octets permettent a l'hote d'ignorer une position d'avant une nouvelle manche
     // ou d'avant une reapparition (le client n'a peut-etre pas encore recu l'info)
     PutU8(&b, G.round); PutU8(&b, p->respawnSeen);
-    PutVec3(&b, p->pos); PutVec3(&b, p->vel);
-    PutF32(&b, p->yaw); PutF32(&b, p->pitch); PutF32(&b, p->bob);
+    PutPos(&b, p->pos); PutPos(&b, p->vel);
+    PutQ16(&b, WrapAngle(p->yaw), 10000); PutQ16(&b, p->pitch, 10000); PutF32(&b, p->bob);
     PutU8(&b, (p->grounded ? 1 : 0) | (p->sprinting ? 2 : 0) | (p->w.reloading ? 4 : 0)
               | (p->w.active == WPN_HARPOON ? 8 : 0) | (p->w.harpoonLoaded ? 16 : 0));
-    PutF32(&b, p->w.muzzleT); PutF32(&b, p->w.reloadT); PutF32(&b, p->w.reloadDur);
-    PutF32(&b, p->w.ads); PutF32(&b, p->w.sprintT); PutF32(&b, p->w.harpoonT);
+    PutQ16(&b, p->w.muzzleT, 1000); PutQ16(&b, p->w.reloadT, 1000); PutQ16(&b, p->w.reloadDur, 1000);
+    PutUnit(&b, p->w.ads); PutQ16(&b, p->w.sprintT, 1000); PutQ16(&b, p->w.harpoonT, 1000);
     PutI16(&b, p->w.ammo); PutI16(&b, p->w.reserve); PutI16(&b, p->w.harpoons);
 
     PutU8(&b, hitCount);
     for (int i = 0; i < hitCount; i++)
     {
         PutU32(&b, hits[i].id); PutU8(&b, hits[i].enemy); PutU8(&b, hits[i].head); PutU8(&b, hits[i].kind); PutF32(&b, hits[i].dmg);
-        PutVec3(&b, hits[i].pos); PutVec3(&b, hits[i].dir);
+        PutPos(&b, hits[i].pos); PutQ16(&b, hits[i].dir.x, 10000); PutQ16(&b, hits[i].dir.y, 10000); PutQ16(&b, hits[i].dir.z, 10000);
     }
-    PutEvents(&b);
+    PutEvents(&b, STATE_EVENTS);
     if (!b.err) SockSend(hostAddr, b.data, b.pos);
     eventCount = 0;     // les effets ne sont envoyes qu'une fois (perte acceptable)
 }

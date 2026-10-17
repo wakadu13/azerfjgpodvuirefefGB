@@ -43,6 +43,12 @@ void RenderUnloadModel(Model m);
 // Dessine le modele m avec la matrice monde world et la teinte c
 void DrawPart(Model *m, Matrix world, Color c);
 
+// Camera de la vue en cours (a donner au debut de chaque passe 3D) : sert a
+// ne pas dessiner ce qui est derriere elle et a simplifier ce qui est loin.
+void RenderSetView(Camera3D cam);
+bool RenderInView(Vector3 p, float radius);   // la sphere (p, radius) peut-elle etre a l'ecran ?
+float RenderViewDistance(Vector3 p);          // distance de p a la camera
+
 // Fond du ciel en 2D (a appeler avant la passe 3D), dimensions en pixels
 void DrawSky(Camera3D cam, int width, int height);   // ciel de nuit, etoiles et lune vues depuis cam
 

@@ -1,16 +1,18 @@
 /*
- * net.h - Multijoueur en reseau (UDP), jusqu'a 4 joueurs.
+ * net.h - Multijoueur en reseau (UDP, ou relais claude.ai dans le navigateur),
+ * jusqu'a MAX_PLAYERS (50) joueurs.
  *
  * Modele hote / clients :
  *  - L'hote fait tourner la partie (mercenaires, vagues, bonus, vie des joueurs)
- *    et envoie l'etat du monde aux clients 30 fois par seconde.
+ *    et envoie l'etat du monde (le meme pour tous) aux clients 30 fois par
+ *    seconde (8 dans le navigateur).
  *  - Chaque client deplace et vise lui-meme son joueur (aucune latence
  *    ressentie), detecte ses tirs localement et envoie a l'hote sa position
  *    et ses touches sur les mercenaires.
  *  - Les effets visibles par tous (tracantes, impacts, plumes, sons...) sont
  *    enregistres puis rejoues sur les autres machines.
  *
- * L'hote est toujours le joueur 0 ; les clients recoivent les numeros 1 a 3.
+ * L'hote est toujours le joueur 0 ; les clients recoivent les numeros 1 a 49.
  * Utilisation type dans la boucle du jeu :
  *     NetReceive(dt);   // au debut de la frame : applique ce qui est arrive
  *     ... mise a jour du jeu ...

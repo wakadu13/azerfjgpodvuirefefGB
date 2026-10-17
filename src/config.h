@@ -19,8 +19,8 @@
 #define MAX_BOXES      64      // nombre maximum de caisses / obstacles (boites de collision) dans la carte
 
 // Entites (tailles des tableaux statiques : pas d'allocation dynamique en jeu)
-#define MAX_PLAYERS    4       // 2 en ecran partage, jusqu'a 4 en reseau
-#define MAX_ENEMIES    64      // mercenaires vivants (ou en train de mourir) en meme temps
+#define MAX_PLAYERS    50      // 2 en ecran partage, jusqu'a 50 en reseau (grosses parties en ligne)
+#define MAX_ENEMIES    160     // mercenaires vivants (ou en train de mourir) en meme temps (< 256 : index sur 1 octet)
 #define MAX_PARTICLES  2048    // etincelles, sang, poussiere, plumes (si tout est plein, les nouvelles sont ignorees)
 #define MAX_TRACERS    64      // traits lumineux des balles
 #define MAX_PICKUPS    32      // objets a ramasser au sol (munitions, soin, harpons)

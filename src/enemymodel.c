@@ -521,7 +521,8 @@ static void Patch(Matrix body, const Ellipsoid *shape, float x, float y, Vector3
 //   body : root + inclinaison du buste (lean) et petit rebond de marche (bob)
 // Les jambes et les bottes utilisent root (elles restent droites), tout le
 // haut du corps utilise body.
-static void DrawEnemy(const Enemy *e)
+// far = mercenaire lointain : version simplifiee (voir plus bas)
+static void DrawEnemy(const Enemy *e, bool far)
 {
     float s = e->sz, f = e->fat, sf = sqrtf(f);   // sf : les membres grossissent moins vite que le tronc
 
@@ -566,6 +567,40 @@ static void DrawEnemy(const Enemy *e)
     Matrix leanM = MatrixMultiply(MatrixMultiply(MatrixTranslate(0, -1.0f, 0), MatrixRotateX(lean)), MatrixTranslate(0, 1.0f + bob, 0));
     Matrix body = MatrixMultiply(leanM, root);
     ArmPose arms[2] = { PoseArm(e, -1, sw, lean), PoseArm(e, 1, sw, lean) };   // [0] = droit, [1] = gauche
+
+    if (far)
+    {
+        // Mercenaire lointain : une quinzaine de pieces au lieu de pres de 80
+        // (de loin les poches, insignes, montre ou peintures ne se voient pas,
+        // et les parties a 50 joueurs comptent jusqu'a 120 mercenaires).
+        // Memes volumes, memes couleurs et memes mouvements que de pres.
+        RenderSetCamo(true, body, Flash(Shade(cl->a, 0.8f), hf), Flash(Shade(cl->b, 0.8f), hf), Flash(Shade(cl->c, 0.8f), hf));
+        for (int k = -1; k <= 1; k += 2)
+        {
+            float swing = sw*k*0.24f, lift = fmaxf(0, -swing);
+            Vector3 hip = V3(0.1f*k*f, 0.95f, 0), foot = V3(0.12f*k*f, 0.1f + lift*0.18f, swing);
+            Limb(root, hip, Vector3Add(foot, V3(0, 0.12f, 0)), 0.08f*sf, pants);                     // jambe d'un seul tenant
+            Box3(root, V3(foot.x, 0.05f, foot.z + 0.04f), NOROT, V3(0.11f*sf, 0.1f, 0.26f), Flash(BOOTS, hf));   // ranger
+        }
+        Ellipsoid shape[3];
+        TorsoShape(f, shape);
+        RenderSetCamo(true, body, Flash(cl->a, hf), Flash(cl->b, hf), Flash(cl->c, hf));
+        for (int i = 0; i < 3; i++) Ball(body, shape[i].c, shape[i].r, shirt);
+        for (int i = 0; i < 2; i++) Limb(body, arms[i].shoulder, arms[i].elbow, 0.062f, shirt);
+        RenderSetCamo(false, body, BLANK, BLANK, BLANK);
+        for (int i = 0; i < 2; i++) Seg(body, arms[i].elbow, arms[i].hand, 0.045f, skin);
+        Ball(body, HEAD_C, Vector3Scale(HEAD_R, 1.05f), Flash(PAINTS[e->paint % PAINT_COUNT], hf));   // tete peinte
+        bool heavy = (e->type == E_TANK || e->type == E_BOSS);
+        DrawPart(ChainModel(heavy ? CHAIN_HEAVY : CHAIN_LIGHT, f), body, Flash(STEEL, hf));
+        if (EnemyHoldsChick(e))
+        {
+            Vector3 h = arms[1].hand;
+            float sc = 1.1f/s;
+            DrawChick(MatrixMultiply(MatrixMultiply(MatrixScale(sc, sc, sc), MatrixTranslate(h.x, h.y + 0.03f, h.z + 0.02f)), body),
+                      e->grabT, 1.0f);
+        }
+        return;
+    }
 
     // Pantalon de treillis (taches d'usure et de boue calculees par le shader)
     // RenderSetCamo active le motif de camouflage pour les primitives qui suivent
@@ -709,14 +744,37 @@ static void DrawEnemy(const Enemy *e)
 
 // Dessine tous les mercenaires actifs avec leur ombre au sol.
 // Pas d'ombre pour un corps couche au sol (il est deja contre le sol).
+// Ceux qui sont derriere la camera sont sautes. Seuls les FULL_DETAIL plus
+// proches (et a moins de 28 m) sont dessines en detail, les autres dans la
+// version simplifiee : a 120 mercenaires, le jeu reste fluide sur telephone.
+#define FULL_DETAIL 14
 void EnemiesDraw(void)
 {
+    float dist[MAX_ENEMIES];
+    float near[FULL_DETAIL];   // les FULL_DETAIL plus petites distances, triees
+    int nearCount = 0;
     for (int i = 0; i < MAX_ENEMIES; i++)
     {
         Enemy *e = &enemies[i];
-        if (!e->active) continue;
+        dist[i] = -1;          // -1 = pas dessine
+        // Sphere englobante : centre a hauteur de poitrine, 2 m de rayon (x taille)
+        if (!e->active || !RenderInView(V3(e->pos.x, e->pos.y + 1.0f*e->sz, e->pos.z), 2.0f*e->sz)) continue;
+        float d = dist[i] = RenderViewDistance(e->pos);
+        // Insertion dans la petite liste triee des plus proches
+        if (nearCount < FULL_DETAIL) nearCount++;
+        else if (d >= near[FULL_DETAIL - 1]) continue;
+        int j = nearCount - 1;
+        while (j > 0 && near[j - 1] > d) { near[j] = near[j - 1]; j--; }
+        near[j] = d;
+    }
+    // Distance limite du detail : 28 m, ou moins s'il y a plus de FULL_DETAIL mercenaires plus pres
+    float farDist = (nearCount == FULL_DETAIL) ? fminf(28.0f, near[FULL_DETAIL - 1]) : 28.0f;
+    for (int i = 0; i < MAX_ENEMIES; i++)
+    {
+        Enemy *e = &enemies[i];
+        if (dist[i] < 0) continue;
         if (e->state != ES_DEAD || e->airborne) DrawBlobShadow(e->pos, EnemyRadius(e)*1.1f);
-        DrawEnemy(e);
+        DrawEnemy(e, dist[i] > farDist);
     }
 }
 

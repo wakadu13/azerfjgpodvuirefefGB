@@ -55,6 +55,11 @@ wait
 # Logs de raylib, puis lignes interessantes des logs systeme (plantages, ANR = application bloquee)
 adb logcat -d -s raylib > "$OUT/android-logcat.txt"
 adb logcat -d | grep -iE "fatal|crash|zeffaliecomeback|libmain|ANR" | tail -80 >> "$OUT/android-logcat.txt"
+# Plantages natifs (pile d'appels) : tampon "crash" du logcat
+adb logcat -d -b crash > "$OUT/android-crash.txt" 2>&1 || true
+# Recopies dans le journal du job : lisibles directement depuis GitHub en cas d'echec
+echo "----- logcat (raylib + systeme) -----"; tail -60 "$OUT/android-logcat.txt"
+echo "----- logcat (plantages) -----"; tail -60 "$OUT/android-crash.txt"
 
 # Echec si le jeu ne tourne plus ou si l'affichage n'a pas pu s'initialiser
 if ! adb shell pidof io.github.wakadu13.zeffaliecomeback; then echo "ECHEC : le jeu s'est arrete"; exit 1; fi

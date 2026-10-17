@@ -11,7 +11,11 @@
  *  - une partie = un salon nomme "zcb-<code>", le code a 4 chiffres est tire
  *    au hasard par l'hote et tape par les autres a la place d'une adresse IP ;
  *  - les "adresses" sont des numeros : 1 = l'hote (vu d'un client), 2, 3...
- *    = les clients (vus de l'hote), attribues par ZNet a chaque nouveau joueur.
+ *    = les clients (vus de l'hote), attribues par ZNet a chaque nouveau joueur ;
+ *    0 = tous les clients (diffusion de l'etat du monde) ;
+ *  - chaque hote s'annonce dans le salon commun de la page : tout le monde
+ *    voit la liste des parties ouvertes (SockListGames) et en rejoint une
+ *    d'un clic, sans avoir a taper le code.
  * Hors de claude.ai (GitHub Pages, fichier zip...), ZNet n'est pas disponible
  * et le jeu cache simplement le menu reseau.
  */
@@ -39,6 +43,12 @@ EM_JS(int, znet_recv, (unsigned char *buf, int cap, int *from), {
     HEAP32[from >> 2] = p.from;
     return p.bytes.length;
 });
+
+EM_JS(void, znet_announce, (int code, int players, int maxPlayers, int wave, int playing), {
+    ZNet.announce({ c: code, n: players, m: maxPlayers, w: wave, p: playing });
+});
+// Ecrit la liste des parties dans buf, une par ligne : "code|joueurs|max|vague|lancee|nom"
+EM_JS(void, znet_games, (char *buf, int cap), { stringToUTF8(ZNet.games(), buf, cap); });
 
 static int gameCode;        // code de la partie (4 chiffres)
 static bool opened;
@@ -68,6 +78,13 @@ void SockClose(void)
 bool SockSend(NetAddr to, const void *data, int len)
 {
     return opened && znet_send((int)to.ip, (const unsigned char *)data, len) != 0;
+}
+
+// Adresse 0 = tous les clients : ZNet diffuse le paquet en un seul message
+bool SockSendMany(const NetAddr *to, int n, const void *data, int len)
+{
+    (void)to;
+    return opened && n > 0 && znet_send(0, (const unsigned char *)data, len) != 0;
 }
 
 int SockRecv(void *buf, int cap, NetAddr *from)
@@ -100,5 +117,29 @@ int SockLocalIPs(char out[][40], int max)
 }
 
 bool SockAddrEqual(NetAddr a, NetAddr b) { return a.ip == b.ip && a.port == b.port; }
+
+void SockAnnounce(int players, int maxPlayers, int wave, bool playing)
+{
+    if (opened) znet_announce(gameCode, players, maxPlayers, wave, playing ? 1 : 0);
+}
+
+int SockListGames(SockGame *out, int max)
+{
+    static char text[4096];
+    if (!SockAvailable()) return 0;
+    znet_games(text, sizeof(text));
+    int n = 0;
+    // Une ligne par partie ; le nom (dernier champ) peut contenir des espaces
+    for (char *line = strtok(text, "\n"); line && n < max; line = strtok(NULL, "\n"))
+    {
+        SockGame g = { 0 };
+        int playing = 0, used = 0;
+        if (sscanf(line, "%d|%d|%d|%d|%d|%n", &g.code, &g.players, &g.maxPlayers, &g.wave, &playing, &used) < 5 || used == 0) continue;
+        g.playing = playing != 0;
+        snprintf(g.name, sizeof(g.name), "%s", line + used);
+        out[n++] = g;
+    }
+    return n;
+}
 
 #endif   // BR_WEB

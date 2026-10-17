@@ -394,19 +394,44 @@ static void DrawWaveBanners(int cx, int h)
     }
 }
 
-// Liste des joueurs en reseau (couleur, vie, eliminations)
-// a partir de (x, y), une ligne de 22 unites par joueur connecte.
+// Numeros des joueurs connectes, du meilleur au moins bon (eliminations).
+// Renvoie leur nombre ; order doit pouvoir contenir MAX_PLAYERS cases.
+static int RankPlayers(int *order)
+{
+    int n = 0;
+    for (int i = 0; i < numPlayers; i++)
+    {
+        if (!players[i].connected) continue;
+        int j = n++;
+        // Tri par insertion : decale vers la droite ceux qui ont moins d'eliminations
+        while (j > 0 && players[order[j - 1]].kills < players[i].kills) { order[j] = order[j - 1]; j--; }
+        order[j] = i;
+    }
+    return n;
+}
+
+// Liste des joueurs en reseau (couleur, vie, eliminations) a partir de (x, y),
+// une ligne de 22 unites par joueur : les 8 meilleurs, plus soi-meme si on
+// n'en fait pas partie (parties a 50 joueurs).
 static void DrawScoreboard(int x, int y)
 {
     char buf[64];
-    for (int i = 0; i < numPlayers; i++)
+    int order[MAX_PLAYERS];
+    int n = RankPlayers(order);
+    for (int r = 0; r < n; r++)
     {
-        const Player *p = &players[i];
-        if (!p->connected) continue;
-        snprintf(buf, sizeof(buf), "J%d%s  %d elim.%s", i + 1, p->local ? " (vous)" : "", p->kills, p->alive ? "" : "  - A TERRE");
+        const Player *p = &players[order[r]];
+        if (r >= 8 && !p->local) continue;
+        if (r >= 8) { TextShadow("...", x + 16, y - 6, 18, GRAY); y += 14; }
+        snprintf(buf, sizeof(buf), "%d. J%d%s  %d elim.%s", r + 1, p->id + 1, p->local ? " (vous)" : "", p->kills, p->alive ? "" : "  - A TERRE");
         DrawRectangle(x, y + 4, 10, 10, p->color);   // pastille de couleur du joueur
         TextShadow(buf, x + 16, y, 18, p->alive ? RAYWHITE : GRAY);
         y += 22;
+    }
+    if (n > 8)
+    {
+        snprintf(buf, sizeof(buf), "%d joueurs", n);
+        TextShadow(buf, x + 16, y, 16, LIGHTGRAY);
     }
 }
 
@@ -485,17 +510,63 @@ Rectangle HudTitleButton(int i) { return StackButton(i, UiHeight()*0.40f, 520, 4
 Rectangle HudPauseButton(int i) { return StackButton(i, UiHeight()*0.52f, 420, 50); }
 Rectangle HudOverButton(int i) { return StackButton(i, UiHeight()*0.74f, 360, 46); }
 Rectangle HudLobbyButton(int i) { return StackButton(i, UiHeight() - 120.0f, 360, 46); }
-Rectangle HudJoinButton(int i) { return StackButton(i, UiHeight()*0.75f, 300, 42); }
+// Centre horizontal du pave de saisie de l'ecran REJOINDRE : au milieu de
+// l'ecran, ou a droite dans le navigateur (la liste des parties est a gauche).
+static float JoinPadX(void)
+{
+#if defined(BR_WEB)
+    return UiWidth()*0.77f;
+#else
+    return UiWidth()/2.0f;
+#endif
+}
+
+Rectangle HudJoinButton(int i)
+{
+    Rectangle r = StackButton(i, UiHeight()*0.75f, 280, 42);
+    r.x = JoinPadX() - r.width/2;
+    return r;
+}
 
 // Touche i du pave numerique de l'ecran REJOINDRE : grille de 3 colonnes
 // sur 4 lignes, centree (i % 3 = colonne, i / 3 = ligne).
 Rectangle HudJoinKey(int i)
 {
     const float kw = 86, kh = 44, gap = 8;   // taille d'une touche et espacement
-    float x0 = UiWidth()/2.0f - (3*kw + 2*gap)/2;
+    float x0 = JoinPadX() - (3*kw + 2*gap)/2;
     float y0 = UiHeight()*0.30f;
     return (Rectangle){ x0 + (i % 3)*(kw + gap), y0 + (i/3)*(kh + gap), kw, kh };
 }
+
+#if defined(BR_WEB)
+// Liste des parties en ligne (colonne de gauche de l'ecran REJOINDRE)
+// Largeur : 520 unites au plus, la moitie de l'ecran sur un petit ecran.
+Rectangle HudJoinGame(int i)
+{
+    float w = fminf(520.0f, UiWidth()*0.52f);
+    return (Rectangle){ UiWidth()*0.30f - w/2, UiHeight()*0.20f + i*50.0f, w, 42 };
+}
+
+// Nombre de lignes de la liste qui tiennent a l'ecran (jusqu'a 78 % de la hauteur)
+static int JoinGameRows(void)
+{
+    int n = (int)((UiHeight()*0.78f - UiHeight()*0.20f)/50.0f);
+    return n < 1 ? 1 : (n > HUD_MAX_GAMES ? HUD_MAX_GAMES : n);
+}
+
+// Parties ouvertes, triees par code (l'ordre ne change pas sous le doigt
+// quand des joueurs arrivent) et limitees a ce qui tient a l'ecran.
+int HudJoinGames(SockGame *out)
+{
+    int n = SockListGames(out, HUD_MAX_GAMES), rows = JoinGameRows();
+    for (int i = 1; i < n; i++)          // tri par insertion (quelques elements)
+        for (int j = i; j > 0 && out[j].code < out[j - 1].code; j--)
+        {
+            SockGame t = out[j]; out[j] = out[j - 1]; out[j - 1] = t;
+        }
+    return n < rows ? n : rows;
+}
+#endif
 
 // Texte de la touche i du pave (meme ordre qu'un pave de telephone).
 const char *HudJoinKeyLabel(int i)
@@ -518,7 +589,12 @@ void HudDrawTitle(int w, int h)
     TextCenter("Des mercenaires enchaines veulent enlever vos poussins. Protegez-les !", cx, y + 134, 18, LIGHTGRAY);
 
     // Libelles et raccourcis indexes par TitleChoice
+#if defined(BR_WEB)
+    // Navigateur (page claude.ai) : parties en ligne, jusqu'a MAX_PLAYERS joueurs
+    static const char *labels[] = { "SOLO", "ECRAN PARTAGE (2 joueurs)", "CREER une partie en ligne", "PARTIES EN LIGNE (rejoindre)" };
+#else
     static const char *labels[] = { "SOLO", "ECRAN PARTAGE (2 joueurs)", "HEBERGER une partie reseau", "REJOINDRE une partie reseau" };
+#endif
     static const char *keys[] = { "1", "2", "3", "4" };
     TitleChoice choices[4];
     int n = HudTitleChoices(choices);
@@ -582,15 +658,15 @@ void HudDrawGameOver(int w, int h)
     snprintf(buf, sizeof(buf), "Vague atteinte : %d      Score : %d      Meilleur score : %d", G.wave, G.score, G.best);
     TextCenter(buf, cx, y + 140, 24, GOLD_TEXT);
     // Une ligne de statistiques par joueur connecte (formulation differente en solo)
-    int line = 0;
-    for (int i = 0; i < numPlayers; i++)
+    // (classement : les 8 meilleurs au plus, pour tenir a l'ecran)
+    int order[MAX_PLAYERS];
+    int n = RankPlayers(order);
+    for (int line = 0; line < n && line < 8; line++)
     {
-        const Player *p = &players[i];
-        if (!p->connected) continue;
+        const Player *p = &players[order[line]];
         if (numPlayers == 1) snprintf(buf, sizeof(buf), "Eliminations : %d      Headshots : %d", p->kills, p->headshots);
-        else snprintf(buf, sizeof(buf), "Joueur %d : %d eliminations, %d headshots", i + 1, p->kills, p->headshots);
-        TextCenter(buf, cx, y + 180 + line*26, 20, numPlayers == 1 ? LIGHTGRAY : p->color);
-        line++;
+        else snprintf(buf, sizeof(buf), "%d. Joueur %d%s : %d eliminations, %d headshots", line + 1, p->id + 1, p->local ? " (vous)" : "", p->kills, p->headshots);
+        TextCenter(buf, cx, y + 180 + line*24, 20, numPlayers == 1 ? LIGHTGRAY : p->color);
     }
     // Un client ne peut pas relancer la partie : seul l'hote decide
     if (NetIsClient()) TextCenter("En attente de l'hote pour rejouer...", cx, (int)HudOverButton(0).y - 34, 20, RAYWHITE);
@@ -604,15 +680,43 @@ void HudDrawJoin(int w, int h, const char *address)
 {
     int cx = w/2;
     DrawRectangle(0, 0, w, h, (Color){ 0, 0, 0, 150 });
-    TextCenter("REJOINDRE UNE PARTIE", cx, (int)(h*0.04f), 44, (Color){ 255, 200, 60, 255 });
 #if defined(BR_WEB)
-    TextCenter("Code de la partie (affiche sur l'ecran de l'hote) :", cx, (int)(h*0.13f), 20, LIGHTGRAY);
+    // Navigateur : a gauche la liste des parties en ligne, a droite le code
+    TextCenter("PARTIES EN LIGNE", cx, (int)(h*0.04f), 44, (Color){ 255, 200, 60, 255 });
+    int lx = (int)(w*0.30f), px = (int)(w*0.77f);
+    TextCenter("Clique sur une partie pour la rejoindre :", lx, (int)(h*0.13f), 20, LIGHTGRAY);
+    SockGame games[HUD_MAX_GAMES];
+    int ng = HudJoinGames(games);
+    for (int i = 0; i < ng; i++)
+    {
+        const SockGame *g = &games[i];
+        bool full = g->players >= g->maxPlayers;
+        char label[96];
+        if (full) snprintf(label, sizeof(label), "%s   %d/%d  PLEINE", g->name, g->players, g->maxPlayers);
+        else if (g->playing) snprintf(label, sizeof(label), "%s   %d/%d  vague %d", g->name, g->players, g->maxPlayers, g->wave);
+        else snprintf(label, sizeof(label), "%s   %d/%d  attente", g->name, g->players, g->maxPlayers);
+        Rectangle r = HudJoinGame(i);
+        // Libelle plus petit que sur un bouton normal : la ligne est longue
+        bool hover = !TouchMode() && CheckCollisionPointRec(UiMouse(), r);
+        DrawRectangleRounded(r, 0.3f, 6, (Color){ 15, 15, 20, hover ? 230 : 190 });
+        DrawRectangleRoundedLinesEx(r, 0.3f, 6, 2.0f, full ? GRAY : (Color){ 120, 200, 255, 255 });
+        TextCenter(label, (int)(r.x + r.width/2), (int)r.y + 11, 20, full ? GRAY : RAYWHITE);
+    }
+    if (ng == 0)
+    {
+        TextCenter("Aucune partie ouverte pour l'instant.", lx, (int)(h*0.24f), 20, GRAY);
+        TextCenter("Cree la tienne depuis le menu : les autres", lx, (int)(h*0.24f) + 30, 18, GRAY);
+        TextCenter("la verront apparaitre ici.", lx, (int)(h*0.24f) + 54, 18, GRAY);
+    }
+    TextCenter("... ou tape son code :", px, (int)(h*0.13f), 20, LIGHTGRAY);
+    cx = px;
 #else
+    TextCenter("REJOINDRE UNE PARTIE", cx, (int)(h*0.04f), 44, (Color){ 255, 200, 60, 255 });
     TextCenter("Adresse IP de l'hote (affichee sur son ecran) :", cx, (int)(h*0.13f), 20, LIGHTGRAY);
 #endif
 
     // Champ de saisie
-    int bw = 380;
+    int bw = 280;
     Rectangle box = { cx - bw/2.0f, h*0.18f, (float)bw, 44 };
     DrawRectangleRec(box, (Color){ 20, 20, 20, 220 });
     DrawRectangleLinesEx(box, 2, (Color){ 255, 200, 60, 255 });
@@ -632,7 +736,7 @@ void HudDrawJoin(int w, int h, const char *address)
     else if (NetGetRole() == NET_CLIENT && st == NET_CONNECTED) TextCenter("Connecte ! En attente de l'hote...", cx, sy, 20, GREEN);
     else if (NetError()[0]) TextCenter(NetError(), cx, sy, 20, (Color){ 255, 100, 80, 255 });
 #if defined(BR_WEB)
-    TextCenter("Chaque joueur ouvre la meme page du jeu sur claude.ai (acces \"Contributeur\").", cx, h - 24, 16, GRAY);
+    TextCenter("Chaque joueur ouvre la meme page du jeu sur claude.ai, connecte a son compte.", w/2, h - 24, 16, GRAY);
 #else
     TextCenter("Meme reseau Wi-Fi que l'hote (ou port UDP 27016 ouvert chez lui).", cx, h - 24, 16, GRAY);
 #endif
@@ -653,7 +757,11 @@ void HudDrawLobby(int w, int h)
         // Adresses IP locales de cette machine (2 au maximum affichees)
         char ips[4][40];
         int n = SockLocalIPs(ips, 4);
+#if defined(BR_WEB)
+        TextCenter("Ta partie apparait dans PARTIES EN LIGNE chez tous les joueurs. Son code :", cx, y + 70, 20, LIGHTGRAY);
+#else
         TextCenter("Les autres joueurs choisissent REJOINDRE et tapent :", cx, y + 70, 20, LIGHTGRAY);
+#endif
         for (int i = 0; i < n && i < 2; i++) TextCenter(ips[i], cx, y + 98 + i*34, 32, RAYWHITE);
         if (n == 0) TextCenter("(adresse IP introuvable)", cx, y + 98, 26, GRAY);
         // Descend d'autant de lignes que d'adresses affichees (1 ligne si aucune)
@@ -668,14 +776,24 @@ void HudDrawLobby(int w, int h)
     }
     else y += 90;
 
-    // Les MAX_PLAYERS emplacements, occupes ou libres (le 0 est toujours l'hote)
-    TextCenter("JOUEURS", cx, y, 24, GOLD_TEXT);
+    // Joueurs connectes : une pastille par joueur, 10 par ligne (jusqu'a MAX_PLAYERS)
+    snprintf(buf, sizeof(buf), "JOUEURS : %d / %d", PlayersConnected(), MAX_PLAYERS);
+    TextCenter(buf, cx, y, 24, GOLD_TEXT);
+    const int perRow = 10, cw = 92, ch = 28;
+    int total = PlayersConnected(), k = 0;
     for (int i = 0; i < MAX_PLAYERS; i++)
     {
         const Player *p = &players[i];
-        if (p->connected) snprintf(buf, sizeof(buf), "Joueur %d%s%s", i + 1, i == 0 ? " (hote)" : "", p->local ? " - vous" : "");
-        else snprintf(buf, sizeof(buf), "Joueur %d : en attente...", i + 1);
-        TextCenter(buf, cx, y + 30 + i*26, 20, p->connected ? p->color : GRAY);
+        if (!p->connected) continue;
+        // Chaque ligne est centree : la derniere peut etre incomplete
+        int row = k/perRow, inRow = total - row*perRow < perRow ? total - row*perRow : perRow;
+        int x = cx - inRow*cw/2 + (k % perRow)*cw, yy = y + 34 + row*(ch + 6);
+        DrawRectangleRounded((Rectangle){ (float)x + 4, (float)yy, cw - 8.0f, (float)ch }, 0.4f, 6,
+                             p->local ? Fade(p->color, 0.55f) : (Color){ 15, 15, 20, 200 });
+        DrawRectangleRoundedLinesEx((Rectangle){ (float)x + 4, (float)yy, cw - 8.0f, (float)ch }, 0.4f, 6, 2.0f, p->color);
+        snprintf(buf, sizeof(buf), i == 0 ? "J%d hote" : "J%d", i + 1);
+        TextCenter(buf, x + cw/2, yy + 5, 18, RAYWHITE);
+        k++;
     }
     if (host) UiDrawButton(HudLobbyButton(0), "LANCER LA PARTIE", (Color){ 255, 200, 60, 255 });
     else TextCenter("En attente du lancement par l'hote...", cx, (int)HudLobbyButton(0).y + 12, 20, RAYWHITE);

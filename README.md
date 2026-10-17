@@ -1,6 +1,6 @@
 # 🐥 ZEFFALIE COME BACK : Opération HK416
 
-FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (écran partagé) ou **jusqu'à 4 en réseau**. Disponible pour **Windows**, **macOS (Apple Silicon)**, **Linux**, **Android** et **iOS**. Vous incarnez à la première personne un opérateur armé d'un **HK416** qui protège ses **poussins** contre des vagues de **mercenaires en treillis olive**, le visage peint en vert et les yeux cernés de noir, une **chaîne en métal** autour du cou, qui avancent comme des zombies, bras tendus, bien décidés à tous les enlever.
+FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (écran partagé) ou **jusqu'à 50 en ligne** (liste des parties ouvertes, comme sur un serveur de jeu). Disponible pour **Windows**, **macOS (Apple Silicon)**, **Linux**, **Android** et **iOS**. Vous incarnez à la première personne un opérateur armé d'un **HK416** qui protège ses **poussins** contre des vagues de **mercenaires en treillis olive**, le visage peint en vert et les yeux cernés de noir, une **chaîne en métal** autour du cou, qui avancent comme des zombies, bras tendus, bien décidés à tous les enlever.
 
 ![Aperçu](docs/apercu.png)
 
@@ -51,15 +51,16 @@ Au menu :
 |---|---|
 | **1** | Solo |
 | **2** | Coop **écran partagé** : 2 joueurs sur le même PC |
-| **3** | **Héberger** une partie réseau (jusqu'à 4 PC) |
-| **4** | **Rejoindre** une partie réseau |
+| **3** | **Héberger** / **créer** une partie (jusqu'à 50 joueurs) |
+| **4** | **Rejoindre** une partie (navigateur : **liste des parties en ligne**) |
 
 Dans tous les modes à plusieurs :
 
 - Les mercenaires s'en prennent au joueur le plus proche ; ils sont plus nombreux (+50 % par joueur supplémentaire) et plus résistants.
+- Plus il y a de joueurs, plus il y a de mercenaires **en même temps** sur le terrain (40 en solo, +2 par joueur, jusqu'à 120) et plus ils arrivent vite : une partie à 50 joueurs devient une vraie bataille.
 - Un joueur à 0 PV est **à terre** et revient au début de la vague suivante.
 - Game over si tous les joueurs sont à terre ou si tous les poussins sont enlevés.
-- Le score est commun, les éliminations sont comptées par joueur. Chaque soldat porte une bande de couleur sur le casque (bleu, orange, vert, violet).
+- Le score est commun, les éliminations sont comptées par joueur. Chaque soldat porte une bande de couleur sur le casque (bleu, orange, vert, violet, puis une couleur différente pour chacun des 50 joueurs). Le classement affiche les 8 meilleurs et votre place.
 
 ### Écran partagé
 
@@ -70,7 +71,7 @@ L'écran se coupe en deux, chaque joueur a sa vue, son HUD et son radar. Contrô
 ### Réseau (plusieurs PC)
 
 1. Sur un PC, appuyez sur **3** : l'écran affiche son **adresse IP** (par ex. `192.168.1.20`).
-2. Sur les autres PC (3 maximum), appuyez sur **4**, tapez cette adresse puis **Entrée**.
+2. Sur les autres PC (jusqu'à 49), appuyez sur **4**, tapez cette adresse puis **Entrée**.
 3. Quand tout le monde est dans la salle d'attente, l'hôte appuie sur **Entrée**.
 
 - Fonctionne entre Windows, macOS et Linux, sur le même réseau (Wi-Fi / box).
@@ -80,6 +81,18 @@ L'écran se coupe en deux, chaque joueur a sa vue, son HUD et son radar. Contrô
 - Un joueur peut rejoindre une partie déjà commencée.
 
 ![Réseau](docs/reseau.png)
+
+### En ligne (navigateur, page claude.ai du jeu)
+
+La page claude.ai du jeu sert de **site de jeu en ligne** : chacun s'y connecte avec son **compte claude.ai** et voit **toutes les parties ouvertes**, pas seulement celles de son réseau.
+
+1. **CRÉER une partie en ligne** : la partie apparaît aussitôt chez tous les joueurs qui ont la page ouverte (avec un code à 4 chiffres en secours).
+2. **PARTIES EN LIGNE** : la liste affiche le nom de l'hôte (« Partie de … »), le nombre de joueurs (jusqu'à **50**) et la vague en cours. **Un clic** pour rejoindre, même une partie déjà commencée.
+3. L'hôte lance la partie quand il veut ; d'autres joueurs peuvent arriver ensuite.
+
+- Pour inviter quelqu'un : bouton **Partager** de la page. Pour **créer** une partie, il faut au moins l'accès **Contributeur** ; pour en rejoindre une, l'accès à la page suffit.
+- L'hôte fait tourner la partie dans son navigateur (comme en réseau local) ; s'il ferme la page, la partie s'arrête.
+- Le relais limite chaque page à environ 40 messages par seconde : l'état du monde est compressé (6 Ko à 50 joueurs → moins de 2 Ko) et envoyé en un seul message à tous ; chaque joueur renvoie le sien par sa « présence » sur la page.
 
 ## ⌨️ Contrôles
 
@@ -123,7 +136,7 @@ Le jeu tourne aussi **dans un navigateur** (Chrome, Edge, Firefox, Safari), sans
 
 - **Ordinateur** : clavier + souris, comme la version PC. Cliquez dans le jeu pour capturer la souris ; **Échap** la libère et met en pause.
 - **Téléphone / tablette** : commandes tactiles détectées automatiquement, en **paysage** ; le jeu passe en plein écran au premier toucher.
-- Modes **solo** et **écran partagé**, et **multijoueur** (jusqu'à 4) sur la **page claude.ai du jeu** : l'hôte choisit HÉBERGER et obtient un **code à 4 chiffres**, les autres choisissent REJOINDRE et le tapent. Chaque joueur doit avoir accès à la page en **Contributeur** (bouton Partager de la page). Les messages passent par le relais temps réel de claude.ai (`src/netsock_web.c` + module `ZNet` de `web/shell.html`), avec le même protocole que la version PC.
+- Modes **solo** et **écran partagé**, et **parties en ligne jusqu'à 50 joueurs** sur la **page claude.ai du jeu** (voir [En ligne](#en-ligne-navigateur-page-claudeai-du-jeu)). Les messages passent par le relais temps réel de claude.ai (`src/netsock_web.c` + module `ZNet` de `web/shell.html`), avec le même protocole que la version PC.
 - Hors de claude.ai (fichier html, GitHub Pages…), le menu réseau est masqué : les navigateurs n'autorisent pas l'UDP.
 
 Mise en ligne : à chaque mise à jour de `main`, le jeu est compilé en **un seul fichier** `ZeffalieComeBack-web.html` (dans la release : il suffit de l'ouvrir d'un double-clic, sans serveur) et publié sur **GitHub Pages** si c'est activé (*Settings → Pages → Source : GitHub Actions* ; sur un dépôt privé, GitHub Pages demande un compte payant). Ce fichier peut aussi être déposé tel quel sur n'importe quel hébergeur web (itch.io, Netlify…). Pour le compiler soi-même :

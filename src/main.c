@@ -2,7 +2,7 @@
  * ZEFFALIE COME BACK : Operation HK416
  * FPS en C avec raylib : un operateur arme d'un HK416 defend ses poussins
  * contre des vagues de mercenaires enchaines. Solo, ecran partage ou
- * reseau (jusqu'a 4 joueurs). PC, Mac, Linux, Android et iOS.
+ * reseau (jusqu'a 50 joueurs). PC, Mac, Linux, Android et iOS.
  *
  * Organisation du code :
  *   main.c     point d'entree, fenetre et boucle principale

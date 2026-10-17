@@ -129,6 +129,14 @@ bool SockSend(NetAddr to, const void *data, int len)
     return sendto(sock, (const char *)data, len, 0, (struct sockaddr *)&addr, sizeof(addr)) == len;
 }
 
+// Meme paquet pour plusieurs destinataires : un envoi par adresse (UDP).
+bool SockSendMany(const NetAddr *to, int n, const void *data, int len)
+{
+    bool ok = true;
+    for (int i = 0; i < n; i++) ok = SockSend(to[i], data, len) && ok;
+    return ok;
+}
+
 // Lit un datagramme en attente. Retourne sa taille, ou 0 s'il n'y a rien (ou en cas d'erreur :
 // en mode non bloquant, "rien a lire" se manifeste justement par une erreur EWOULDBLOCK).
 // Si le paquet est plus grand que cap, il est tronque (le reste est perdu).

@@ -27,28 +27,43 @@
 #include "raymath.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 // Tableau global de tous les joueurs (un emplacement par joueur possible)
 Player players[MAX_PLAYERS];
 int numPlayers = 1;
 
-// Couleur de chaque joueur : J1 bleu, J2 orange, J3 vert, J4 violet
-static const Color PLAYER_COLORS[MAX_PLAYERS] = {
-    { 70, 150, 255, 255 }, { 255, 140, 40, 255 }, { 90, 220, 90, 255 }, { 230, 90, 230, 255 }
-};
+// Couleur de chaque joueur : J1 bleu, J2 orange, J3 vert, J4 violet, puis
+// (grosses parties en ligne) des teintes calculees qui tournent autour du
+// cercle des couleurs, avec un pas de 137,5 degres (l'angle d'or) : deux
+// numeros proches ont toujours des couleurs bien differentes.
+static Color PlayerColor(int id)
+{
+    static const Color first[4] = {
+        { 70, 150, 255, 255 }, { 255, 140, 40, 255 }, { 90, 220, 90, 255 }, { 230, 90, 230, 255 }
+    };
+    if (id < 4) return first[id];
+    return ColorFromHSV(fmodf(id*137.5f, 360.0f), 0.65f, 1.0f);
+}
 
 //----------------------------------------------------------------------------------
 // Creation / reapparition
 //----------------------------------------------------------------------------------
 // Point d'apparition du joueur "id" : derriere le stand (z = 9), les joueurs
 // alignes cote a cote et centres sur x = 0.
+// En reseau (jusqu'a 50 joueurs) : rangees de 13 joueurs espaces de 1,1 m
+// (x de -6,6 a +6,6, en partant du milieu), la premiere a z = 9 et les 3
+// suivantes tous les 1,2 m
+// (jusqu'a z = 12,6 : avant la caisse posee en (-4, 15)).
 static Vector3 SpawnPoint(int id)
 {
     if (numPlayers == 1) return V3(0, 0, 9);
-    float spacing = (numPlayers == 2) ? 3.0f : 1.5f;   // plus serre a 4 joueurs
-    // (id - (n-1)/2) donne -0.5/+0.5 a 2 joueurs, -1.5..+1.5 a 4 : centre sur 0
-    return V3((id - (numPlayers - 1)*0.5f)*spacing, 0, 9);
+    if (numPlayers == 2) return V3((id - 0.5f)*3.0f, 0, 9);   // -1,5 et +1,5
+    // Places remplies depuis le centre de la rangee : 0, +1, -1, +2, -2...
+    int row = id/13, k = id % 13;
+    int offset = (k + 1)/2*((k % 2) ? 1 : -1);
+    return V3(offset*1.1f, 0, 9 + row*1.2f);
 }
 
 // Remet un emplacement a zero (nouvelle partie). Les compteurs reseau et
@@ -58,7 +73,7 @@ static void SetupSlot(Player *p, int id)
     Player keep = *p;               // copie de l'ancien etat pour garder certains champs
     memset(p, 0, sizeof(*p));       // tout le reste repart de zero
     p->id = id;
-    p->color = PLAYER_COLORS[id];
+    p->color = PlayerColor(id);
     p->connected = keep.connected;
     p->local = keep.local;
     p->ammoGrant = keep.ammoGrant;
@@ -99,7 +114,7 @@ void PlayersResetNet(int localId)
     for (int i = 0; i < MAX_PLAYERS; i++)
     {
         players[i].id = i;                    // les emplacements vides ont quand meme
-        players[i].color = PLAYER_COLORS[i];  // un id et une couleur valides
+        players[i].color = PlayerColor(i);    // un id et une couleur valides
     }
     players[localId].connected = true;
     players[localId].local = true;
@@ -179,8 +194,10 @@ void PlayerGiveHarpoons(Player *p, int amount)
 // Prefixe des messages du fil d'actualite ("J2 est tombe !"). Inutile en solo.
 const char *PlayerTag(const Player *p)
 {
-    static const char *tags[MAX_PLAYERS] = { "J1 ", "J2 ", "J3 ", "J4 " };
-    return (numPlayers == 1) ? "" : tags[p->id];
+    static char tags[MAX_PLAYERS][16];  // "J1 " ... "J50 ", ecrits a la demande
+    if (numPlayers == 1) return "";
+    snprintf(tags[p->id], sizeof(tags[p->id]), "J%d ", p->id + 1);
+    return tags[p->id];
 }
 
 // Nombre de joueurs connectes encore en vie (0 = partie perdue)
@@ -551,7 +568,8 @@ void PlayerUpdateCamera(Player *p, float dt)
 // cylindres) dans un repere local : origine aux pieds, +Z devant, +Y en haut.
 // Box3(repere, centre, rotation, taille, couleur) ; Ball(repere, centre, rayons, couleur) ;
 // Limb(repere, debut, fin, rayon, couleur) = membre cylindrique.
-void PlayerDrawBody(const Player *p)
+// far = joueur lointain : son arme devient une simple silhouette noire.
+void PlayerDrawBody(const Player *p, bool far)
 {
     const Color uniform = { 92, 98, 66, 255 }, vest = { 125, 115, 82, 255 };
     const Color skin = { 225, 180, 140, 255 }, boots = { 45, 40, 32, 255 };
@@ -588,7 +606,8 @@ void PlayerDrawBody(const Player *p)
     // demi-tour (RotateY(PI)), puis placement a l'epaule droite.
     Matrix gunLocal = MatrixMultiply(MatrixMultiply(MatrixRotateX(p->alive ? p->pitch : 0.0f), MatrixRotateY(PI)),
                                      MatrixTranslate(0.12f, 1.4f, 0.28f));
-    if (p->w.active == WPN_HARPOON) DrawHarpoonGun(MatrixMultiply(gunLocal, root), &p->w);
+    if (far) Box3(MatrixMultiply(gunLocal, root), V3(0, 0, -0.2f), NOROT, V3(0.06f, 0.12f, 0.8f), (Color){ 25, 25, 25, 255 });
+    else if (p->w.active == WPN_HARPOON) DrawHarpoonGun(MatrixMultiply(gunLocal, root), &p->w);
     else DrawHK416(MatrixMultiply(gunLocal, root), &p->w);
 
     // Bras vers la poignee et le garde-main

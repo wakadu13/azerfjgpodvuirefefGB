@@ -264,6 +264,18 @@ static void UpdateJoin(void)
             else if (len < cap) { joinAddress[len++] = key[0]; joinAddress[len] = '\0'; }
         }
         if (erase && len > 0) joinAddress[len - 1] = '\0';
+#if defined(BR_WEB)
+        // Clic sur une partie de la liste en ligne : on la rejoint directement avec son code
+        SockGame games[HUD_MAX_GAMES];
+        int ng = HudJoinGames(games);
+        for (int i = 0; i < ng; i++)
+            if (UiButtonHit(HudJoinGame(i)))
+            {
+                snprintf(joinAddress, sizeof(joinAddress), "%04d", games[i].code);
+                NetJoin(joinAddress);
+                return;
+            }
+#endif
         // Entree ou bouton SE CONNECTER : lance la connexion (resultat lu plus tard via NetGetStatus)
         if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || UiButtonHit(HudJoinButton(0))) NetJoin(joinAddress);
     }
@@ -444,13 +456,15 @@ static void RenderView(Camera3D cam, const Player *viewer, bool withWeapon, int 
     BeginMode3D(cam);
         // Parametres du shader pour cette vue : position de l'oeil, soleil, brouillard, flash
         RenderSetFrame(cam.position, RenderSunDir(), 0.022f, flashPos, flashPower);
+        RenderSetView(cam);   // pour ne pas dessiner ce qui est derriere la camera
         MapDraw(G.time, G.chicks - EnemiesHoldingChicks());   // poussins encore sur le comptoir
         PickupsDraw();
         EnemiesDraw();
         HarpoonsDraw();
         // Corps des autres joueurs (on ne dessine pas le sien : la camera est dans sa tete)
         for (int i = 0; i < numPlayers && inGame; i++)
-            if (&players[i] != viewer && players[i].connected) PlayerDrawBody(&players[i]);
+            if (&players[i] != viewer && players[i].connected && RenderInView(V3(players[i].pos.x, 1.0f, players[i].pos.z), 1.5f))
+                PlayerDrawBody(&players[i], RenderViewDistance(players[i].pos) > 12.0f);
         EffectsDraw();   // en dernier : particules transparentes par-dessus le reste
     EndMode3D();
     if (inGame) EnemiesDrawSpeech(cam, w, h);   // bulles de paroles, en 2D par-dessus la scene
