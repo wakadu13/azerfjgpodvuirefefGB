@@ -92,8 +92,16 @@ static void DrawDamageVignette(const Player *p, int w, int h)
 
 static void DrawCrosshair(const Player *p, int cx, int cy)
 {
+    if (p->w.active == WPN_HARPOON && p->w.sprintT < 0.5f)
+    {
+        // Harpon : cercle + point
+        Color c = p->w.harpoonLoaded ? WHITE : Fade(WHITE, 0.35f);
+        DrawCircleLines(cx, cy, 11, c);
+        DrawCircleLines(cx, cy, 12, Fade(BLACK, 0.4f));
+        DrawRectangle(cx - 1, cy - 1, 3, 3, c);
+    }
     // Reticule qui s'ecarte avec la dispersion ; masque au viseur
-    if (p->w.ads < 0.6f && p->w.sprintT < 0.5f)
+    else if (p->w.ads < 0.6f && p->w.sprintT < 0.5f)
     {
         int gap = (int)(6 + WeaponSpread(p)*350), len = 9;
         Color c = Fade(WHITE, 1.0f - p->w.ads*1.6f);
@@ -133,11 +141,35 @@ static void DrawHealth(const Player *p, int h, bool showName)
     TextShadow(buf, x + 220, y - 22, 18, RAYWHITE);
 }
 
+static void DrawHarpoonAmmo(const Player *p, int w, int h, int cx, int cy)
+{
+    const Weapon *wp = &p->w;
+    char buf[32];
+    int x = w - 260, y = h - 86;
+    DrawRectangle(x - 10, y - 6, 250, 82, PANEL);
+    TextShadow(wp->harpoonLoaded ? "1" : "0", x, y, 56, wp->harpoonLoaded ? RAYWHITE : (Color){ 255, 90, 70, 255 });
+    snprintf(buf, sizeof(buf), "/ %d", wp->harpoons);
+    TextShadow(buf, x + MeasureText("0", 56) + 12, y + 26, 26, LIGHTGRAY);
+    TextShadow("HARPON", x + 140, y + 4, 20, SKYBLUE);
+    TextShadow("1 coup = 1 glouton", x + 98, y + 30, 14, LIGHTGRAY);
+    for (int i = 0; i < HARPOON_MAX; i++)   // une encoche par fleche en reserve
+        DrawRectangle(x + i*18, y + 62, 14, 5, (i < wp->harpoons) ? SKYBLUE : (Color){ 80, 80, 80, 200 });
+
+    if (wp->harpoonT > 0)
+    {
+        TextCenter("RECHARGEMENT DU HARPON...", cx, cy + 50, 20, RAYWHITE);
+        DrawRectangle(cx - 80, cy + 76, 160, 6, (Color){ 0, 0, 0, 150 });
+        DrawRectangle(cx - 80, cy + 76, (int)(160*(1.0f - wp->harpoonT/HARPOON_RELOAD)), 6, SKYBLUE);
+    }
+    else if (!wp->harpoonLoaded && wp->harpoons == 0) TextCenter("PLUS DE HARPONS ! (1 / E : HK416)", cx, cy + 50, 22, RED);
+}
+
 static void DrawAmmo(const Player *p, int w, int h, int cx, int cy)
 {
     const Weapon *wp = &p->w;
     char buf[32];
     int x = w - 260, y = h - 86;
+    if (wp->active == WPN_HARPOON) { DrawHarpoonAmmo(p, w, h, cx, cy); return; }
     DrawRectangle(x - 10, y - 6, 250, 82, PANEL);
     snprintf(buf, sizeof(buf), "%d", wp->ammo);
     TextShadow(buf, x, y, 56, wp->ammo <= 8 ? (Color){ 255, 90, 70, 255 } : RAYWHITE);
@@ -246,7 +278,7 @@ static void DrawWaveBanners(int cx, int h)
     {
         snprintf(buf, sizeof(buf), "VAGUE %d TERMINEE", G.wave);
         TextCenter(buf, cx, h/4, 52, (Color){ 120, 255, 120, 255 });
-        TextCenter("+2 burgers  +90 munitions  +25 PV", cx, h/4 + 60, 22, RAYWHITE);
+        TextCenter("+2 burgers  +90 munitions  +3 harpons  +25 PV", cx, h/4 + 60, 22, RAYWHITE);
         snprintf(buf, sizeof(buf), "Prochaine vague dans %d...", (int)ceilf(G.interT));
         TextCenter(buf, cx, h/4 + 92, 22, LIGHTGRAY);
     }
@@ -322,9 +354,9 @@ void HudDrawTitle(int w, int h)
         TextCenter(menu[i], cx, y + 185 + i*34, 28, (i == 0 && blink) ? (Color){ 255, 220, 120, 255 } : RAYWHITE);
 
     const char *lines[] = {
-        "JOUEUR 1 : ZQSD/WASD, souris, clic G tirer, clic D viser, R recharger, B mode, MAJ sprint, ESPACE sauter",
-        "JOUEUR 2 (manette) : sticks, RT tirer, LT viser, X recharger, A sauter, L3 sprint, Y mode",
-        "JOUEUR 2 (clavier) : IJKL bouger, fleches viser, CTRL D tirer, MAJ D viser, U recharger, O sauter, H sprint",
+        "JOUEUR 1 : ZQSD/WASD, souris, clic G tirer, clic D viser, R recharger, 1/2/E/molette : HK416 / HARPON, MAJ sprint, ESPACE sauter",
+        "JOUEUR 2 (manette) : sticks, RT tirer, LT viser, RB harpon, X recharger, A sauter, L3 sprint, Y mode",
+        "JOUEUR 2 (clavier) : IJKL bouger, fleches viser, CTRL D tirer, MAJ D viser, M harpon, U recharger, O sauter, H sprint",
         "ECHAP / P / START : pause",
     };
     for (int i = 0; i < 4; i++) TextCenter(lines[i], cx, y + 340 + i*24, 17, i == 0 ? RAYWHITE : LIGHTGRAY);

@@ -41,9 +41,10 @@ static bool Collect(Player *p, PickupType type)
 {
     if (type == PK_AMMO)
     {
-        if (p->w.reserve >= MAX_RESERVE) return false;
+        if (p->w.reserve >= MAX_RESERVE && p->w.harpoons >= HARPOON_MAX) return false;
         PlayerGiveAmmo(p, 60);
-        FeedAdd(GREEN, "%s+60 munitions 5.56", PlayerTag(p));
+        PlayerGiveHarpoons(p, 1);
+        FeedAdd(GREEN, "%s+60 munitions 5.56 et +1 harpon", PlayerTag(p));
     }
     else
     {

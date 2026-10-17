@@ -20,6 +20,8 @@ typedef struct {
     bool fire, firePressed;
     bool aim, sprint;
     bool reload, jump, toggleMode;   // appuis ponctuels
+    bool switchWeapon;               // HK416 <-> harpon
+    int selectWeapon;                // -1, ou arme choisie directement (touches 1 / 2)
 } PlayerInput;
 
 struct Player {
@@ -49,6 +51,7 @@ struct Player {
     float netYaw, netPitch;
     int ammoGrant;         // munitions donnees par l'hote (cumul)
     int ammoGrantSeen;     // ... deja ajoutees cote client
+    int harpoonGrant, harpoonGrantSeen;
     int respawnCount, respawnSeen;
 };
 
@@ -69,6 +72,7 @@ void PlayerHurt(Player *p, float dmg);
 void PlayerRespawn(Player *p);
 void PlayerRefillWeapon(Player *p);
 void PlayerGiveAmmo(Player *p, int amount);
+void PlayerGiveHarpoons(Player *p, int amount);
 void PlayerDrawBody(const Player *p);
 
 Vector3 PlayerEye(const Player *p);

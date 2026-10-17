@@ -54,6 +54,7 @@ static void GiveRewards(void)
         Player *p = &players[i];
         if (!p->connected || !p->alive) continue;
         PlayerGiveAmmo(p, 90);
+        PlayerGiveHarpoons(p, 3);
         p->hp = fminf(100, p->hp + 25);
     }
     SfxWorld(SND_PICK, 0.8f, 0.6f);

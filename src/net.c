@@ -24,6 +24,7 @@
 #include "effects.h"
 #include "hud.h"
 #include "audio.h"
+#include "harpoon.h"
 
 #include "raymath.h"
 
@@ -34,7 +35,7 @@
 #include <string.h>
 
 #define NET_MAGIC    0x48535242u   // "BRSH"
-#define NET_VERSION  1
+#define NET_VERSION  2
 #define PACKET_MAX   8192
 #define MAX_EVENTS   64
 #define MAX_HITS     32
@@ -50,7 +51,7 @@ typedef struct {
 
 typedef struct {
     uint32_t id;
-    uint8_t enemy, head;
+    uint8_t enemy, head, kind;
     float dmg;
     Vector3 pos, dir;
 } NetHit;
@@ -181,6 +182,7 @@ static void ApplyEvent(const NetEvent *e)
         case EV_SAUCE:  BurstSauce(e->a, e->b, e->param); break;
         case EV_SPARKS: BurstSparks(e->a, e->b); break;
         case EV_CRUMBS: BurstCrumbs(e->a); break;
+        case EV_HARPOON: HarpoonSpawnRemote(e->a, e->b); break;
         case EV_SOUND:
             if (e->param < SND_COUNT)   // les tirs des autres un peu moins forts que les siens
                 PlaySfx((SndId)e->param, e->f1, e->param == SND_SHOT ? e->f2*0.6f : e->f2);
@@ -292,7 +294,7 @@ void NetRecordFeed(Color c, const char *text)
     snprintf(feedRing[0].text, sizeof(feedRing[0].text), "%s", text);
 }
 
-void NetReportHit(int enemy, float dmg, bool head, Vector3 pos, Vector3 dir)
+void NetReportHit(int enemy, float dmg, bool head, Vector3 pos, Vector3 dir, NetHitKind kind)
 {
     if (role != NET_CLIENT) return;
     if (hitCount == MAX_HITS)   // file pleine : on oublie la plus ancienne
@@ -300,7 +302,7 @@ void NetReportHit(int enemy, float dmg, bool head, Vector3 pos, Vector3 dir)
         memmove(hits, hits + 1, (MAX_HITS - 1)*sizeof(NetHit));
         hitCount--;
     }
-    hits[hitCount++] = (NetHit){ ++nextHitId, (uint8_t)enemy, (uint8_t)head, dmg, pos, dir };
+    hits[hitCount++] = (NetHit){ ++nextHitId, (uint8_t)enemy, (uint8_t)head, (uint8_t)kind, dmg, pos, dir };
 }
 
 //----------------------------------------------------------------------------------
@@ -356,7 +358,8 @@ static void HostApplyHit(int id, const NetHit *h)
     Enemy *e = &enemies[h->enemy];
     if (!e->active || e->state == ES_DEAD) return;
     recordOrigin = id;   // les effets produits ne seront pas renvoyes au tireur
-    EnemyDamage(e, fminf(h->dmg, BULLET_DAMAGE*HEADSHOT_MULT), h->head, h->pos, h->dir, &players[id]);
+    if (h->kind == HIT_HARPOON) EnemyHarpoon(e, h->dir, &players[id]);
+    else EnemyDamage(e, fminf(h->dmg, BULLET_DAMAGE*HEADSHOT_MULT), h->head, h->pos, h->dir, &players[id]);
     recordOrigin = localId;
 }
 
@@ -368,7 +371,8 @@ static void HostHandleState(Buf *b, int id)
     float yaw = GetF32(b), pitch = GetF32(b), bob = GetF32(b);
     int flags = GetU8(b);
     float muzzleT = GetF32(b), reloadT = GetF32(b), reloadDur = GetF32(b), ads = GetF32(b), sprintT = GetF32(b);
-    int ammo = GetI16(b), reserve = GetI16(b);
+    float harpoonT = GetF32(b);
+    int ammo = GetI16(b), reserve = GetI16(b), harpoonCount = GetI16(b);
     if (b->err) return;
 
     // Paquet d'une partie precedente ou d'avant la reapparition : position perimee
@@ -383,6 +387,10 @@ static void HostHandleState(Buf *b, int id)
         p->grounded = flags & 1;
         p->sprinting = flags & 2;
         p->w.reloading = flags & 4;
+        p->w.active = (flags & 8) ? WPN_HARPOON : WPN_RIFLE;
+        p->w.harpoonLoaded = flags & 16;
+        p->w.harpoonT = harpoonT;
+        p->w.harpoons = harpoonCount;
         p->w.muzzleT = muzzleT;
         p->w.reloadT = reloadT;
         p->w.reloadDur = reloadDur;
@@ -396,7 +404,7 @@ static void HostHandleState(Buf *b, int id)
     for (int i = 0; i < nh && !b->err; i++)
     {
         NetHit h;
-        h.id = GetU32(b); h.enemy = (uint8_t)GetU8(b); h.head = (uint8_t)GetU8(b); h.dmg = GetF32(b);
+        h.id = GetU32(b); h.enemy = (uint8_t)GetU8(b); h.head = (uint8_t)GetU8(b); h.kind = (uint8_t)GetU8(b); h.dmg = GetF32(b);
         h.pos = GetVec3(b); h.dir = GetVec3(b);
         if (b->err || h.id <= clients[id].lastHit) continue;
         clients[id].lastHit = h.id;
@@ -429,11 +437,13 @@ static void HostReceive(int type, Buf *b, NetAddr from)
 
 static void PutPlayer(Buf *b, const Player *p)
 {
-    int flags = (p->connected ? 1 : 0) | (p->alive ? 2 : 0) | (p->grounded ? 4 : 0) | (p->w.reloading ? 8 : 0) | (p->sprinting ? 16 : 0);
+    int flags = (p->connected ? 1 : 0) | (p->alive ? 2 : 0) | (p->grounded ? 4 : 0) | (p->w.reloading ? 8 : 0) | (p->sprinting ? 16 : 0)
+              | (p->w.active == WPN_HARPOON ? 32 : 0) | (p->w.harpoonLoaded ? 64 : 0);
     PutU8(b, flags);
     PutF32(b, p->hp);
     PutI16(b, p->kills); PutI16(b, p->headshots);
-    PutI32(b, p->ammoGrant);
+    PutI32(b, p->ammoGrant); PutI32(b, p->harpoonGrant);
+    PutF32(b, p->w.harpoonT);
     PutU8(b, p->respawnCount);
     PutVec3(b, p->pos);
     PutF32(b, p->vel.x); PutF32(b, p->vel.z);
@@ -444,9 +454,10 @@ static void PutPlayer(Buf *b, const Player *p)
 
 static void PutEnemy(Buf *b, int idx, const Enemy *e)
 {
-    PutU8(b, idx); PutU8(b, e->type); PutU8(b, e->state); PutU8(b, e->hasCap);
+    PutU8(b, idx); PutU8(b, e->type); PutU8(b, e->state);
+    PutU8(b, (e->hasCap ? 1 : 0) | (e->launched ? 2 : 0) | (e->airborne ? 4 : 0));
     PutU8(b, e->shirt); PutU8(b, e->skin); PutU8(b, e->pants); PutU8(b, e->cap);
-    PutF32(b, e->pos.x); PutF32(b, e->pos.z); PutF32(b, e->yaw);
+    PutVec3(b, e->pos); PutF32(b, e->yaw); PutF32(b, e->spin);
     PutF32(b, e->hp); PutF32(b, e->sz); PutF32(b, e->fat);
     PutF32(b, e->eatT); PutF32(b, e->deadT);
     PutU8(b, (int)(Clamp(e->hitFlash, 0, 1)*255)); PutU8(b, (int)(Clamp(e->attackAnim, 0, 1)*255));
@@ -531,7 +542,7 @@ static void HostUpdate(float dt)
 //----------------------------------------------------------------------------------
 // Client
 //----------------------------------------------------------------------------------
-static void ClientApplyLocalPlayer(Player *p, int flags, float hp, int ammoGrant, int respawnCount, Vector3 pos)
+static void ClientApplyLocalPlayer(Player *p, int flags, float hp, int ammoGrant, int harpoonGrant, int respawnCount, Vector3 pos)
 {
     bool alive = flags & 2;
     if (alive && p->alive && hp < p->hp - 0.5f)   // degats subis : retour visuel et sonore
@@ -564,6 +575,12 @@ static void ClientApplyLocalPlayer(Player *p, int flags, float hp, int ammoGrant
             PlaySfx(SND_PICK, 1.0f, 0.6f);
         }
     }
+    if (harpoonGrant != p->harpoonGrantSeen)
+    {
+        int d = harpoonGrant - p->harpoonGrantSeen;
+        p->harpoonGrantSeen = harpoonGrant;
+        if (d > 0) p->w.harpoons = (p->w.harpoons + d > HARPOON_MAX) ? HARPOON_MAX : p->w.harpoons + d;
+    }
 }
 
 static void ClientReadPlayer(Buf *b, int i)
@@ -572,7 +589,8 @@ static void ClientReadPlayer(Buf *b, int i)
     int flags = GetU8(b);
     float hp = GetF32(b);
     int kills = GetI16(b), headshots = GetI16(b);
-    int ammoGrant = GetI32(b);
+    int ammoGrant = GetI32(b), harpoonGrant = GetI32(b);
+    float harpoonT = GetF32(b);
     int respawnCount = GetU8(b);
     Vector3 pos = GetVec3(b);
     float vx = GetF32(b), vz = GetF32(b);
@@ -585,7 +603,7 @@ static void ClientReadPlayer(Buf *b, int i)
     {
         p->kills = kills;
         p->headshots = headshots;
-        ClientApplyLocalPlayer(p, flags, hp, ammoGrant, respawnCount, pos);
+        ClientApplyLocalPlayer(p, flags, hp, ammoGrant, harpoonGrant, respawnCount, pos);
         return;
     }
     if (connected && !p->connected) p->pos = pos;   // nouveau joueur : pas de lissage
@@ -596,6 +614,9 @@ static void ClientReadPlayer(Buf *b, int i)
     p->grounded = flags & 4;
     p->w.reloading = flags & 8;
     p->sprinting = flags & 16;
+    p->w.active = (flags & 32) ? WPN_HARPOON : WPN_RIFLE;
+    p->w.harpoonLoaded = flags & 64;
+    p->w.harpoonT = harpoonT;
     p->hp = hp;
     p->kills = kills;
     p->headshots = headshots;
@@ -617,9 +638,10 @@ static void ClientReadEnemies(Buf *b)
     int count = GetU8(b);
     for (int n = 0; n < count && !b->err; n++)
     {
-        int idx = GetU8(b), type = GetU8(b), state = GetU8(b), hasCap = GetU8(b);
+        int idx = GetU8(b), type = GetU8(b), state = GetU8(b), eflags = GetU8(b);
         int shirt = GetU8(b), skin = GetU8(b), pants = GetU8(b), cap = GetU8(b);
-        float x = GetF32(b), z = GetF32(b), yaw = GetF32(b);
+        Vector3 pos = GetVec3(b);
+        float yaw = GetF32(b), spin = GetF32(b);
         float hp = GetF32(b), sz = GetF32(b), fat = GetF32(b), eatT = GetF32(b), deadT = GetF32(b);
         float hitFlash = GetU8(b)/255.0f, attackAnim = GetU8(b)/255.0f;
         if (b->err || idx >= MAX_ENEMIES) break;
@@ -627,25 +649,29 @@ static void ClientReadEnemies(Buf *b)
         Enemy *e = &enemies[idx];
         seen[idx] = true;
         bool fresh = !e->active || e->type != (EnemyType)type || (e->state == ES_DEAD && state != ES_DEAD && e->predictT <= 0);
-        if (e->predictT > 0 && state != ES_DEAD) continue;   // on garde la mort predite en attendant l'hote
+        if (e->predictT > 0) continue;   // on garde la mort predite (et le vol) en attendant l'hote
 
         if (state == ES_DEAD && e->state != ES_DEAD) e->deadT = deadT;
         if (state == ES_EAT && e->state != ES_EAT) e->eatT = eatT;
         e->active = true;
         e->type = (EnemyType)type;
         e->state = (EnemyState)state;
-        e->hasCap = hasCap;
+        e->hasCap = eflags & 1;
+        e->launched = eflags & 2;
+        e->airborne = eflags & 4;
+        e->netSpin = spin;
         e->shirt = (unsigned char)shirt; e->skin = (unsigned char)skin;
         e->pants = (unsigned char)pants; e->cap = (unsigned char)cap;
         e->hp = hp; e->sz = sz; e->fat = fat;
         e->hitFlash = fmaxf(e->hitFlash, hitFlash);
         e->attackAnim = fmaxf(e->attackAnim, attackAnim);
-        e->netPos = V3(x, 0, z);
+        e->netPos = pos;
         e->netYaw = yaw;
         if (fresh)
         {
             e->pos = e->netPos;
             e->yaw = yaw;
+            e->spin = spin;
             e->deadT = deadT;
             e->predictT = 0;
         }
@@ -779,15 +805,16 @@ static void ClientSendState(void)
     PutU8(&b, G.round); PutU8(&b, p->respawnSeen);
     PutVec3(&b, p->pos); PutVec3(&b, p->vel);
     PutF32(&b, p->yaw); PutF32(&b, p->pitch); PutF32(&b, p->bob);
-    PutU8(&b, (p->grounded ? 1 : 0) | (p->sprinting ? 2 : 0) | (p->w.reloading ? 4 : 0));
+    PutU8(&b, (p->grounded ? 1 : 0) | (p->sprinting ? 2 : 0) | (p->w.reloading ? 4 : 0)
+              | (p->w.active == WPN_HARPOON ? 8 : 0) | (p->w.harpoonLoaded ? 16 : 0));
     PutF32(&b, p->w.muzzleT); PutF32(&b, p->w.reloadT); PutF32(&b, p->w.reloadDur);
-    PutF32(&b, p->w.ads); PutF32(&b, p->w.sprintT);
-    PutI16(&b, p->w.ammo); PutI16(&b, p->w.reserve);
+    PutF32(&b, p->w.ads); PutF32(&b, p->w.sprintT); PutF32(&b, p->w.harpoonT);
+    PutI16(&b, p->w.ammo); PutI16(&b, p->w.reserve); PutI16(&b, p->w.harpoons);
 
     PutU8(&b, hitCount);
     for (int i = 0; i < hitCount; i++)
     {
-        PutU32(&b, hits[i].id); PutU8(&b, hits[i].enemy); PutU8(&b, hits[i].head); PutF32(&b, hits[i].dmg);
+        PutU32(&b, hits[i].id); PutU8(&b, hits[i].enemy); PutU8(&b, hits[i].head); PutU8(&b, hits[i].kind); PutF32(&b, hits[i].dmg);
         PutVec3(&b, hits[i].pos); PutVec3(&b, hits[i].dir);
     }
     PutEvents(&b);

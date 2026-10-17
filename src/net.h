@@ -18,7 +18,8 @@
 typedef enum { NET_OFF, NET_HOST, NET_CLIENT } NetRole;
 typedef enum { NET_IDLE, NET_CONNECTING, NET_CONNECTED, NET_FAILED, NET_LOST } NetStatus;
 
-typedef enum { EV_TRACER = 1, EV_SAUCE, EV_SPARKS, EV_CRUMBS, EV_SOUND } NetEventType;
+typedef enum { EV_TRACER = 1, EV_SAUCE, EV_SPARKS, EV_CRUMBS, EV_SOUND, EV_HARPOON } NetEventType;
+typedef enum { HIT_BULLET, HIT_HARPOON } NetHitKind;
 
 bool NetHost(void);                    // ouvre le port NET_PORT
 bool NetJoin(const char *address);     // "ip" ou "ip:port"
@@ -37,7 +38,7 @@ bool NetIsAuthority(void);             // solo, ecran partage ou hote
 // Enregistrement d'evenements a rejouer sur les autres machines
 void NetRecordEvent(NetEventType type, Vector3 a, Vector3 b, int param, float f1, float f2);
 void NetRecordFeed(Color c, const char *text);
-void NetReportHit(int enemy, float dmg, bool head, Vector3 pos, Vector3 dir);
+void NetReportHit(int enemy, float dmg, bool head, Vector3 pos, Vector3 dir, NetHitKind kind);
 void NetSuppress(bool on);             // effets purement locaux (non retransmis)
 
 #endif

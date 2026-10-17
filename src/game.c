@@ -18,6 +18,7 @@
 #include "waves.h"
 #include "hud.h"
 #include "net.h"
+#include "harpoon.h"
 #include "render.h"
 
 #include "raymath.h"
@@ -52,6 +53,7 @@ static void ClearWorld(void)
     EnemiesClear();
     EffectsClear();
     PickupsClear();
+    HarpoonsClear();
 }
 
 void GameStart(GameMode mode)
@@ -125,6 +127,7 @@ void GameNetRoundStarted(void)
 {
     // Cote client : l'hote a (re)lance une partie
     EffectsClear();
+    HarpoonsClear();
     for (int i = 0; i < MAX_ENEMIES; i++) enemies[i].predictT = 0;
     Player *me = &players[NetLocalId()];
     WeaponReset(&me->w);
@@ -215,6 +218,7 @@ static void UpdateWorld(float dt)
         PickupsAnimate(dt);
         EnemiesClientUpdate(dt);
     }
+    HarpoonsUpdate(dt);
     EffectsUpdate(dt);
     FeedUpdate(dt);
     for (int i = 0; i < numPlayers; i++) if (players[i].local) PlayerUpdateCamera(&players[i], dt);
@@ -313,6 +317,7 @@ static void RenderView(Camera3D cam, const Player *viewer, bool withWeapon, int 
         MapDraw(G.time, G.burgers);
         PickupsDraw();
         EnemiesDraw();
+        HarpoonsDraw();
         for (int i = 0; i < numPlayers && inGame; i++)
             if (&players[i] != viewer && players[i].connected) PlayerDrawBody(&players[i]);
         EffectsDraw();
