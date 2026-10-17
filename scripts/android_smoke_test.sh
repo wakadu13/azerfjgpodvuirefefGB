@@ -33,5 +33,10 @@ wait
 
 adb logcat -d -s raylib > "$OUT/android-logcat.txt"
 adb logcat -d | grep -iE "fatal|crash|burgerrush|libmain" | tail -60 >> "$OUT/android-logcat.txt"
-adb shell pidof io.github.wakadu13.burgerrush && echo "OK : le jeu tourne toujours" >> "$OUT/android-logcat.txt"
+
+# Echec si le jeu ne tourne plus ou si l'affichage n'a pas pu s'initialiser
+if ! adb shell pidof io.github.wakadu13.burgerrush; then echo "ECHEC : le jeu s'est arrete"; exit 1; fi
+if grep -qE "Failed to create EGL|Failed to (compile|link)" "$OUT/android-logcat.txt"; then echo "ECHEC : erreur graphique"; exit 1; fi
+grep -q "Program shader loaded" "$OUT/android-logcat.txt" || { echo "ECHEC : shaders non charges"; exit 1; }
+echo "OK"
 exit 0

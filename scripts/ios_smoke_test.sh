@@ -23,7 +23,11 @@ xcrun simctl io "$UDID" screenshot "$OUT/ios-1-menu.png"
 xcrun simctl terminate "$UDID" $BUNDLE
 
 SIMCTL_CHILD_BR_AUTOSTART=1 xcrun simctl launch --stdout="$PWD/$OUT/ios-stdout-jeu.txt" --stderr="$PWD/$OUT/ios-stderr-jeu.txt" "$UDID" $BUNDLE
-sleep 25
+sleep 10
 xcrun simctl io "$UDID" screenshot "$OUT/ios-2-jeu.png"
-xcrun simctl spawn "$UDID" launchctl list | grep -i burger >> "$OUT/ios-stdout-jeu.txt" || echo "le processus ne tourne plus" >> "$OUT/ios-stdout-jeu.txt"
+
+# Echec si l'affichage n'a pas pu s'initialiser (nos shaders = 2e programme charge)
+if grep -qE "Failed to (compile|link|create)" "$OUT"/ios-stdout-*.txt; then echo "ECHEC : erreur graphique"; exit 1; fi
+[ "$(grep -c "Program shader loaded" "$OUT/ios-stdout-jeu.txt")" -ge 2 ] || { echo "ECHEC : shaders du jeu non charges"; exit 1; }
+echo "OK"
 exit 0

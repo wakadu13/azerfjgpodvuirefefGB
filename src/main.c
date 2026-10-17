@@ -47,9 +47,8 @@ int main(int argc, char *argv[])
   #if defined(BR_IOS)
     IosScreenSize(&width, &height);
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_FULLSCREEN_MODE);
-  #else
-    SetConfigFlags(FLAG_MSAA_4X_HINT);
   #endif
+    // Android : pas de MSAA, beaucoup d'appareils (et l'emulateur) refusent alors de creer le contexte EGL
     InitWindow(width, height, "Burger Rush");
     SetTargetFPS(60);
 #else
