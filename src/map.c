@@ -289,5 +289,14 @@ void MapDraw(float time, int chicks)
         float x = (k & 1) ? 26.0f : -26.0f, z = (k & 2) ? 26.0f : -26.0f;
         Seg(I, V3(x, 0, z), V3(x, 6, z), 0.12f, (Color){ 60, 62, 66, 255 });
         Box3(I, V3(x, 6.05f, z), NOROT, V3(0.7f, 0.2f, 0.4f), (Color){ 60, 62, 66, 255 });
+        // Ampoule allumee sous la tete (couleur pleine, sans ombrage : elle "brille").
+        // La lumiere qu'elle donne est calculee par le shader (LAMPS dans render.c).
+        RenderSetEmissive(true);
+        Box3(I, V3(x, 5.92f, z), NOROT, V3(0.5f, 0.06f, 0.28f), (Color){ 255, 226, 150, 255 });
+        RenderSetEmissive(false);
     }
+    // Ampoule du stand, sous le toit, juste au-dessus des poussins
+    RenderSetEmissive(true);
+    Ball(I, V3(0, 2.9f, 0), V3(0.12f, 0.1f, 0.12f), (Color){ 255, 230, 160, 255 });
+    RenderSetEmissive(false);
 }

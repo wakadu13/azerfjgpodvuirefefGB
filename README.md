@@ -6,6 +6,8 @@ FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (éc
 
 Tout est généré par le code (modèles 3D, sons, textures) : **aucun fichier externe**.
 
+**Ambiance** : la partie se joue **de nuit** (ciel étoilé, lune, lampadaires et lampe du stand qui éclairent l'arène). Les mercenaires lancent des « **On va croquer les poussins !** » (bulle au-dessus de la tête et voix grognée). En fond, une **marche au tambour** avec un **chœur grave** (composition originale générée par le code, dans l'esprit d'un chant de troupe).
+
 ## 🎮 Le jeu
 
 - Au centre de l'arène, **12 poussins** sautillent sur le comptoir du stand.

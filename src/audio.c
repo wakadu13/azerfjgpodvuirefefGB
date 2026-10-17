@@ -22,6 +22,7 @@
 #include "raymath.h"
 
 #include <math.h>
+#include <string.h>
 
 #define SHOT_VOICES 8   // tirs superposes (alias du meme son)
 
@@ -124,8 +125,251 @@ static float SoundSample(SndId id, float t, float dur, float nz, float lp, float
 }
 
 // Genere un son complet en memoire : echantillons 16 bits mono a 44,1 kHz.
+//----------------------------------------------------------------------------------
+// Voix et musique : filtres resonants (formants)
+//----------------------------------------------------------------------------------
+// Un "resonateur" est un filtre passe-bande tres selectif (biquad a 2 poles) :
+// il ne garde du signal que les frequences proches de f. Une voix humaine se
+// reconnait a ses formants (2 ou 3 resonances de la bouche, qui changent
+// selon la voyelle) : en filtrant une onde en dent de scie (les cordes
+// vocales) par deux resonateurs, on obtient un "a", un "o", un "ou"...
+typedef struct { float y1, y2; } Reso;
+
+static float ResoStep(Reso *r, float x, float f, float bw, float sampleRate)
+{
+    float rad = expf(-PI*bw/sampleRate);                // largeur de bande -> rayon du pole
+    float a1 = 2.0f*rad*cosf(2*PI*f/sampleRate), a2 = -rad*rad;
+    float y = (1.0f - rad)*x + a1*r->y1 + a2*r->y2;      // y[n] = b0.x + a1.y[n-1] + a2.y[n-2]
+    r->y2 = r->y1;
+    r->y1 = y;
+    return y;
+}
+
+// Dent de scie entre -1 et 1 pour une phase en tours (0..1 = une periode)
+static float Saw(float phase) { return 2.0f*(phase - floorf(phase)) - 1.0f; }
+
+// Voix grognee "On va croquer les poussins !" : 7 syllabes, chacune avec ses
+// deux formants de voyelle (F1, F2 en Hz) et un souffle de consonne au debut.
+// Ce n'est pas une vraie synthese vocale, plutot un grommellement qui en a
+// le rythme et la melodie.
+static Sound GenTaunt(void)
+{
+    const int sampleRate = 22050;
+    static const struct { float f1, f2, pitch; bool consonant; } SYL[7] = {
+        { 500, 900, 1.00f, false },   // on
+        { 750, 1250, 1.05f, true },   // va
+        { 450, 850, 1.15f, true },    // cro
+        { 550, 1700, 1.25f, true },   // quer
+        { 420, 1900, 1.05f, true },   // les
+        { 330, 800, 1.10f, true },    // pous
+        { 520, 1500, 0.90f, true },   // sins
+    };
+    const float sylLen = 0.21f, gap = 0.03f, start = 0.05f;
+    float dur = start + 7*(sylLen + gap) + 0.15f;
+    int n = (int)(dur*sampleRate);
+    float *buf = (float *)MemAlloc(n*sizeof(float));
+    Reso r1 = { 0 }, r2 = { 0 };
+    float phase = 0.0f, peak = 1e-6f, hp = 0.0f;
+    for (int i = 0; i < n; i++)
+    {
+        float t = (float)i/sampleRate;
+        int k = (int)((t - start)/(sylLen + gap));
+        float local = t - start - k*(sylLen + gap);
+        float v = 0.0f;
+        if (t >= start && k < 7 && local < sylLen)
+        {
+            // Hauteur de la voix : grave (95 Hz) avec l'intonation de la syllabe,
+            // un tremblement rauque (35 Hz) et la fin de phrase qui retombe
+            float f0 = 95.0f*SYL[k].pitch*(1.0f + 0.03f*sinf(2*PI*35.0f*t)) * (k == 6 ? 1.0f - 0.4f*local : 1.0f);
+            phase += f0/sampleRate;
+            float env = powf(sinf(PI*local/sylLen), 0.6f);
+            float src = Saw(phase) + Randf(-0.15f, 0.15f);   // cordes vocales + souffle
+            v = (ResoStep(&r1, src, SYL[k].f1, 90.0f, sampleRate) + 0.6f*ResoStep(&r2, src, SYL[k].f2, 130.0f, sampleRate))*env;
+            // Consonne : bruit aigu (passe-haut) pendant les 40 premieres ms
+            if (SYL[k].consonant && local < 0.04f)
+            {
+                float nz = Randf(-1.0f, 1.0f);
+                v += (nz - hp)*0.35f*(1.0f - local/0.04f);
+                hp = nz;
+            }
+        }
+        buf[i] = v;
+        peak = fmaxf(peak, fabsf(v));
+    }
+    // Normalisation : le son le plus fort atteint 85 % du maximum
+    short *data = (short *)MemAlloc(n*sizeof(short));
+    for (int i = 0; i < n; i++) data[i] = (short)(buf[i]/peak*0.85f*32000.0f);
+    MemFree(buf);
+    Wave w = { .frameCount = (unsigned int)n, .sampleRate = sampleRate, .sampleSize = 16, .channels = 1, .data = data };
+    Sound snd = LoadSoundFromWave(w);
+    UnloadWave(w);
+    return snd;
+}
+
+//----------------------------------------------------------------------------------
+// Musique de fond : marche au tambour et choeur grave
+//----------------------------------------------------------------------------------
+// Boucle de 8 mesures a 4 temps, generee au demarrage (~21 s) :
+//  - caisse claire militaire (coups, accents, roulements) et grosse caisse ;
+//  - choeur d'hommes sur "aaah", melodie solennelle en re mineur, doublee a
+//    l'octave et a la quinte en dessous, sur un bourdon re-la ;
+//  - une composition originale "dans l'esprit" d'un chant de troupe.
+// Elle est emballee dans un fichier WAV en memoire et jouee comme Music, que
+// raylib sait faire tourner en boucle sans coupure.
+#define MUSIC_RATE 22050
+#define MUSIC_BPM  92.0f
+
+static Music music;
+static unsigned char *musicWav;   // fichier WAV en memoire (doit vivre aussi longtemps que la Music)
+static bool musicOk;
+
+// Ajoute (en boucle) un coup de caisse claire de force vel a l'echantillon s0
+static void AddSnare(float *buf, int n, int s0, float vel)
+{
+    float prev = 0.0f;
+    for (int i = 0; i < MUSIC_RATE/4; i++)
+    {
+        float t = (float)i/MUSIC_RATE;
+        float nz = Randf(-1.0f, 1.0f);
+        float timbre = (nz - prev)*0.55f*expf(-t*22.0f)            // timbre (bruit aigu)
+                     + sinf(2*PI*185.0f*t)*0.45f*expf(-t*38.0f);   // peau
+        prev = nz;
+        buf[(s0 + i) % n] += timbre*vel;
+    }
+}
+
+// Ajoute un coup de grosse caisse : sinus grave dont la hauteur chute
+static void AddKick(float *buf, int n, int s0, float vel)
+{
+    float ph = 0.0f;
+    for (int i = 0; i < MUSIC_RATE/2; i++)
+    {
+        float t = (float)i/MUSIC_RATE;
+        ph += (48.0f + 70.0f*expf(-t*28.0f))/MUSIC_RATE;
+        buf[(s0 + i) % n] += sinf(2*PI*ph)*expf(-t*6.0f)*vel;
+    }
+}
+
+// Ajoute une note chantee (choeur : 3 voix legerement desaccordees) de
+// hauteur midi, de start a start+len secondes, avec attaque et relachement
+static void AddVoice(float *buf, int n, float start, float len, int midi, float gain)
+{
+    float f = 440.0f*powf(2.0f, (midi - 69)/12.0f);
+    static const float DETUNE[3] = { 1.0f, 1.005f, 0.995f };
+    float ph[3] = { 0.0f, 0.33f, 0.66f };
+    int s0 = (int)(start*MUSIC_RATE), total = (int)((len + 0.3f)*MUSIC_RATE);
+    for (int i = 0; i < total; i++)
+    {
+        float t = (float)i/MUSIC_RATE;
+        float env = fminf(t/0.12f, 1.0f)*(t > len ? expf(-(t - len)*12.0f) : 1.0f);
+        float vib = 1.0f + 0.004f*sinf(2*PI*5.0f*t);   // vibrato
+        float v = 0.0f;
+        for (int k = 0; k < 3; k++) { ph[k] += f*DETUNE[k]*vib/MUSIC_RATE; v += Saw(ph[k]); }
+        buf[(s0 + i) % n] += v*env*gain;
+    }
+}
+
+static void MusicInit(void)
+{
+    const float beat = 60.0f/MUSIC_BPM;
+    const int bars = 8;
+    int n = (int)(bars*4*beat*MUSIC_RATE);
+    float *drums = (float *)MemAlloc(n*sizeof(float));
+    float *choir = (float *)MemAlloc(n*sizeof(float));
+
+    // Tambour : force des coups de caisse claire par double-croche (16 par mesure).
+    // Mesure A = marche ; mesure B (4e et 8e) = finit par un roulement.
+    static const float MARCH[16] = { 1, 0, .35f, 0, .8f, 0, .4f, .35f, 1, 0, .35f, 0, .8f, .45f, .55f, .65f };
+    static const float ROLL[16]  = { 1, 0, .35f, 0, .8f, 0, .4f, .35f, 1, .3f, .4f, .5f, .6f, .7f, .8f, .9f };
+    float sixteenth = beat/4;
+    for (int b = 0; b < bars; b++)
+    {
+        const float *pat = (b % 4 == 3) ? ROLL : MARCH;
+        for (int s = 0; s < 16; s++)
+        {
+            float t = (b*16 + s)*sixteenth;
+            if (pat[s] > 0) AddSnare(drums, n, (int)(t*MUSIC_RATE), pat[s]);
+            // Roulement : un coup supplementaire entre chaque double-croche
+            if (pat == ROLL && s >= 9) AddSnare(drums, n, (int)((t + sixteenth/2)*MUSIC_RATE), pat[s]*0.6f);
+            if (s == 0 || s == 8) AddKick(drums, n, (int)(t*MUSIC_RATE), s == 0 ? 1.0f : 0.8f);
+        }
+    }
+
+    // Melodie (notes midi et durees en temps) : re mineur, 8 mesures
+    static const struct { int midi; float beats; } MELODY[] = {
+        { 50, 2 }, { 53, 1 }, { 55, 1 },   // re  fa  sol
+        { 57, 3 }, { 57, 1 },              // la ...
+        { 58, 2 }, { 57, 1 }, { 55, 1 },   // sib la sol
+        { 57, 4 },                         // la
+        { 62, 2 }, { 60, 1 }, { 58, 1 },   // re  do  sib
+        { 57, 2 }, { 55, 2 },              // la  sol
+        { 53, 1 }, { 55, 1 }, { 52, 2 },   // fa  sol mi
+        { 50, 4 },                         // re
+    };
+    float t = 0.0f;
+    for (unsigned i = 0; i < sizeof(MELODY)/sizeof(MELODY[0]); i++)
+    {
+        float len = MELODY[i].beats*beat;
+        AddVoice(choir, n, t, len*0.95f, MELODY[i].midi, 0.16f);         // voix principale
+        AddVoice(choir, n, t, len*0.95f, MELODY[i].midi - 12, 0.12f);    // basses a l'octave
+        AddVoice(choir, n, t, len*0.95f, MELODY[i].midi - 7, 0.08f);     // quinte en dessous (couleur medievale)
+        t += len;
+    }
+    // Bourdon re-la tenu sur toute la boucle (deux notes par mesure pour respirer)
+    for (int b = 0; b < bars; b++)
+    {
+        AddVoice(choir, n, b*4*beat, 4*beat*0.97f, 38, 0.07f);
+        AddVoice(choir, n, b*4*beat, 4*beat*0.97f, 45, 0.05f);
+    }
+
+    // Le choeur passe par les formants de la voyelle "a" (bouche ouverte)
+    Reso r1 = { 0 }, r2 = { 0 }, r3 = { 0 };
+    float peak = 1e-6f;
+    for (int pass = 0; pass < 2; pass++)   // 2 tours : le 2e part des etats du 1er, la boucle se raccorde sans clic
+        for (int i = 0; i < n; i++)
+        {
+            float x = choir[i];
+            float v = ResoStep(&r1, x, 700.0f, 110.0f, MUSIC_RATE) + 0.7f*ResoStep(&r2, x, 1150.0f, 140.0f, MUSIC_RATE)
+                    + 0.25f*ResoStep(&r3, x, 2600.0f, 220.0f, MUSIC_RATE);
+            if (pass == 1)
+            {
+                drums[i] = drums[i]*0.55f + v*0.65f;   // meme volume moyen pour le tambour et le choeur
+                peak = fmaxf(peak, fabsf(drums[i]));
+            }
+        }
+
+    // Fichier WAV en memoire : en-tete de 44 octets puis echantillons 16 bits
+    int dataBytes = n*2;
+    musicWav = (unsigned char *)MemAlloc(44 + dataBytes);
+    unsigned char *h = musicWav;
+    #define PUT32(p, v) do { unsigned int x_ = (v); (p)[0] = x_ & 255; (p)[1] = (x_ >> 8) & 255; (p)[2] = (x_ >> 16) & 255; (p)[3] = x_ >> 24; } while (0)
+    #define PUT16(p, v) do { (p)[0] = (v) & 255; (p)[1] = ((v) >> 8) & 255; } while (0)
+    memcpy(h, "RIFF", 4); PUT32(h + 4, 36 + dataBytes); memcpy(h + 8, "WAVEfmt ", 8);
+    PUT32(h + 16, 16); PUT16(h + 20, 1); PUT16(h + 22, 1);            // PCM, mono
+    PUT32(h + 24, MUSIC_RATE); PUT32(h + 28, MUSIC_RATE*2);           // frequence, octets par seconde
+    PUT16(h + 32, 2); PUT16(h + 34, 16);                              // 2 octets par echantillon, 16 bits
+    memcpy(h + 36, "data", 4); PUT32(h + 40, dataBytes);
+    for (int i = 0; i < n; i++)
+    {
+        short v = (short)(drums[i]/peak*0.85f*32000.0f);
+        PUT16(h + 44 + i*2, (unsigned short)v);
+    }
+    #undef PUT32
+    #undef PUT16
+    MemFree(drums);
+    MemFree(choir);
+
+    music = LoadMusicStreamFromMemory(".wav", musicWav, 44 + dataBytes);
+    musicOk = IsMusicValid(music);
+    if (!musicOk) return;
+    music.looping = true;
+    SetMusicVolume(music, 0.4f);
+    PlayMusicStream(music);
+}
+
 static Sound GenSound(SndId id)
 {
+    if (id == SND_TAUNT) return GenTaunt();   // voix : generateur a part (filtres a etat)
     const int sampleRate = 44100;   // echantillons par seconde (qualite CD)
     float dur = SoundDuration(id);
     int n = (int)(dur*sampleRate);  // nombre total d'echantillons
@@ -162,6 +406,13 @@ void AudioInit(void)
     for (int i = 0; i < SND_COUNT; i++) sounds[i] = GenSound((SndId)i);
     audioOk = IsSoundValid(sounds[SND_SHOT]);
     if (audioOk) for (int i = 0; i < SHOT_VOICES; i++) shotVoices[i] = LoadSoundAlias(sounds[SND_SHOT]);
+    if (audioOk) MusicInit();
+}
+
+// A appeler a chaque image : raylib remplit le tampon audio de la musique au fur et a mesure
+void AudioUpdate(void)
+{
+    if (musicOk) UpdateMusicStream(music);
 }
 
 // Les alias doivent etre liberes avant le son d'origine dont ils partagent les donnees
@@ -171,6 +422,8 @@ void AudioClose(void)
     {
         for (int i = 0; i < SHOT_VOICES; i++) UnloadSoundAlias(shotVoices[i]);
         for (int i = 0; i < SND_COUNT; i++) UnloadSound(sounds[i]);
+        if (musicOk) UnloadMusicStream(music);
+        MemFree(musicWav);
     }
     CloseAudioDevice();
 }

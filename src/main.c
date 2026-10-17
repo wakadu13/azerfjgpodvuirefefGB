@@ -80,6 +80,7 @@ int main(int argc, char *argv[])
     // joueur n'a pas demande a quitter depuis le menu (G.quit)
     while (!WindowShouldClose() && !G.quit)
     {
+        AudioUpdate();   // musique de fond
         // Duree de la frame en secondes, plafonnee a 50 ms : apres un gel
         // (chargement, fenetre deplacee...) la simulation ne fait pas un
         // saut enorme qui ferait traverser les murs ou rater des collisions

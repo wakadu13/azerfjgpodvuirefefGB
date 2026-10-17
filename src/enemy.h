@@ -67,6 +67,11 @@ typedef struct {
     float stuckT, sideSign;
     unsigned char camo, skin, paint, gear;   // apparence (indices, voir enemymodel.c)
 
+    // Paroles ("On va croquer les poussins !"), gerees sur chaque machine
+    // sans passer par le reseau : talkT = temps restant d'affichage de la
+    // bulle, talkCd = attente avant la prochaine phrase.
+    float talkT, talkCd;
+
     // Projete par le harpon
     bool launched, airborne;   // a ete harponne / est encore en l'air
     Vector3 vel;               // vitesse du corps en vol (m/s)
@@ -92,8 +97,15 @@ int EnemiesAlive(void);                    // nombre de mercenaires vivants
 int EnemiesHoldingChicks(void);   // poussins en train d'etre emportes (plus sur le comptoir)
 bool EnemyHoldsChick(const Enemy *e);      // ce mercenaire tient-il un poussin en main ?
 
+// Paroles des mercenaires : minuteries (a appeler a chaque image, hote comme client)
+void EnemiesTalkUpdate(float dt);
+#define ENEMY_TAUNT "On va croquer les poussins !"
+
 // enemymodel.c
 void EnemiesDraw(void);          // dessine tous les mercenaires actifs
+// Bulles de paroles (2D) au-dessus des mercenaires qui parlent, vus depuis cam
+// dans une zone de dessin de w x h pixels. A appeler apres EndMode3D.
+void EnemiesDrawSpeech(Camera3D cam, int w, int h);
 void EnemyModelsUnload(void);    // libere les meshes de chaines mis en cache
 
 const char *EnemyName(EnemyType type);   // nom affiche dans le fil d'evenements

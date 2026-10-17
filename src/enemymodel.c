@@ -719,3 +719,31 @@ void EnemiesDraw(void)
         DrawEnemy(e);
     }
 }
+
+// Bulles de paroles : pour chaque mercenaire qui parle, on projette un point
+// au-dessus de sa tete a l'ecran et on y dessine une bulle blanche avec la
+// phrase. La taille du texte diminue avec la distance (comme un objet 3D).
+void EnemiesDrawSpeech(Camera3D cam, int w, int h)
+{
+    Vector3 fwd = Vector3Normalize(Vector3Subtract(cam.target, cam.position));
+    for (int i = 0; i < MAX_ENEMIES; i++)
+    {
+        const Enemy *e = &enemies[i];
+        if (!e->active || e->talkT <= 0 || e->state == ES_DEAD) continue;
+        Vector3 top = V3(e->pos.x, 2.08f*e->sz, e->pos.z);   // juste au-dessus des cheveux
+        Vector3 to = Vector3Subtract(top, cam.position);
+        float dist = Vector3Length(to);
+        if (dist > 28.0f || Vector3DotProduct(to, fwd) < 0.3f*dist) continue;   // trop loin ou hors champ
+
+        Vector2 sp = GetWorldToScreenEx(top, cam, w, h);
+        int size = (int)Clamp(h*0.2f/dist, 10.0f, 30.0f);
+        // Apparition et disparition en fondu (0.25 s)
+        float a = Clamp(fminf(e->talkT, 2.6f - e->talkT)/0.25f, 0.0f, 1.0f);
+        int tw = MeasureText(ENEMY_TAUNT, size);
+        Rectangle box = { sp.x - tw/2.0f - size*0.5f, sp.y - size*2.2f, tw + size*1.0f, size*1.5f };
+        DrawRectangleRounded(box, 0.5f, 8, Fade(RAYWHITE, 0.92f*a));
+        DrawTriangle((Vector2){ sp.x - size*0.35f, box.y + box.height }, (Vector2){ sp.x, sp.y - size*0.2f },
+                     (Vector2){ sp.x + size*0.35f, box.y + box.height }, Fade(RAYWHITE, 0.92f*a));   // pointe vers la bouche
+        DrawText(ENEMY_TAUNT, (int)(box.x + size*0.5f), (int)(box.y + size*0.25f), size, Fade((Color){ 140, 20, 20, 255 }, a));
+    }
+}

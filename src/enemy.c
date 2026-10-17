@@ -556,6 +556,42 @@ void EnemiesPushPlayers(bool localOnly)
 
 // Mise a jour de tous les mercenaires (hote ou partie solo) : timers, IA,
 // corps morts, puis separation et poussee des joueurs.
+//----------------------------------------------------------------------------------
+// Paroles
+//----------------------------------------------------------------------------------
+#define TALK_TIME     2.6f   // duree d'affichage de la bulle (s)
+#define MAX_TALKERS   3      // pas plus de 3 bulles a la fois, sinon c'est illisible
+
+// Fait parler les mercenaires de temps en temps. Purement local : chaque
+// machine choisit ses propres moments (pas besoin de synchroniser du texte).
+void EnemiesTalkUpdate(float dt)
+{
+    int talking = 0;
+    for (int i = 0; i < MAX_ENEMIES; i++)
+        if (enemies[i].active && enemies[i].talkT > 0) talking++;
+
+    for (int i = 0; i < MAX_ENEMIES; i++)
+    {
+        Enemy *e = &enemies[i];
+        if (!e->active) continue;
+        if (e->state == ES_DEAD) { e->talkT = 0; continue; }   // les morts se taisent
+        if (e->talkT > 0) { e->talkT -= dt; continue; }
+        // Nouveau venu (minuteries a zero) : premiere phrase peu apres son arrivee
+        if (e->talkCd == 0) e->talkCd = Randf(0.5f, 5.0f);
+        e->talkCd -= dt;
+        if (e->talkCd > 0 || talking >= MAX_TALKERS) continue;
+
+        e->talkT = TALK_TIME;
+        e->talkCd = Randf(8.0f, 16.0f);
+        talking++;
+        // Grognement de la phrase, plus fort si un joueur de cette machine est proche
+        float best = 1e9f;
+        for (int k = 0; k < numPlayers; k++)
+            if (players[k].connected && players[k].local) best = fminf(best, Vector3Distance(players[k].pos, e->pos));
+        if (best < 25.0f) PlaySfx(SND_TAUNT, Randf(0.85f, 1.1f)/sqrtf(e->sz), 0.9f*(1.0f - best/25.0f));
+    }
+}
+
 void EnemiesUpdate(float dt)
 {
     for (int i = 0; i < MAX_ENEMIES; i++)

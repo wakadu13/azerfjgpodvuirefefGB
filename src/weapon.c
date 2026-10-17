@@ -555,6 +555,7 @@ void WeaponRenderViewModel(const Player *p, Camera3D worldCam)
         // Parametres d'eclairage : pas de brouillard (0), et lumiere du flash de
         // bouche placee au canon pendant un tir
         RenderSetFrame(vc.position, Vector3Normalize(ld), 0.0f, MuzzleView(p), p->w.muzzleT > 0 ? 0.25f : 0.0f);
+        RenderSetLamps(false);   // les lampes sont en coordonnees monde, pas en espace vue
         Matrix W0 = WeaponViewMatrix(p);
         if (p->w.active == WPN_HARPOON) DrawHarpoonGun(W0, &p->w);
         else DrawHK416(W0, &p->w);

@@ -29,6 +29,7 @@ Vector3 RenderSunDir(void);   // direction (normalisee) dans laquelle voyage la 
 void RenderSetFrame(Vector3 viewPos, Vector3 lightDir, float fogDensity, Vector3 flashPos, float flashPower);
 void RenderSetEmissive(bool on);   // couleur pleine, sans eclairage
 void RenderSetChecker(bool on);    // motif carrelage / herbe (sol)
+void RenderSetLamps(bool on);      // lampes de la nuit (eteintes pour la passe de l'arme)
 void RenderClearDepth(void);       // vide le depth buffer (passe de l'arme)
 // Taches sur le tissu (usure, boue du treillis) pour les pieces suivantes :
 // couleur de la piece + nuances a, b, c, dans le repere du corps donne.
@@ -41,7 +42,7 @@ void RenderUnloadModel(Model m);
 void DrawPart(Model *m, Matrix world, Color c);
 
 // Fond du ciel en 2D (a appeler avant la passe 3D), dimensions en pixels
-void DrawSky(int width, int height);
+void DrawSky(Camera3D cam, int width, int height);   // ciel de nuit, etoiles et lune vues depuis cam
 
 // Primitives. t = translation, r = rotation (euler XYZ), s = taille.
 Matrix TRS(Vector3 t, Vector3 r, Vector3 s);

@@ -17,10 +17,12 @@ typedef enum {
     SND_PICK,      // ramassage d'un bonus
     SND_HARPOON,   // tir de harpon
     SND_THUD,      // choc sourd (corps projete)
+    SND_TAUNT,     // voix grognee d'un mercenaire ("On va croquer les poussins !")
     SND_COUNT
 } SndId;
 
 void AudioInit(void);    // ouvre le peripherique audio et genere tous les sons
+void AudioUpdate(void);  // a chaque image : fait avancer la musique de fond (tambour et choeur)
 void AudioClose(void);   // libere les sons et ferme le peripherique
 // Joue un son. pitch : 1 = normal, 2 = une octave plus aigu (et 2x plus court) ;
 // volume : 0 a 1.

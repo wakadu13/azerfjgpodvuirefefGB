@@ -28,9 +28,17 @@
 extern void GL_APIENTRY glClear(unsigned int mask);
 #define GL_DEPTH_BUFFER_BIT 0x00000100   // valeur officielle de la constante OpenGL
 
-// Bleu en haut du ciel, bleu-gris tres clair a l'horizon (et dans le brouillard)
-const Color SKY_TOP = { 92, 148, 214, 255 };
-const Color SKY_HORIZON = { 196, 214, 232, 255 };
+// Ciel de nuit : bleu nuit presque noir en haut, bleu ardoise a l'horizon
+// (c'est aussi la couleur du brouillard, pour que le decor se fonde dans la nuit)
+const Color SKY_TOP = { 5, 8, 20, 255 };
+const Color SKY_HORIZON = { 22, 30, 50, 255 };
+
+// Lampes qui eclairent la nuit : une sous le toit du stand (au-dessus des
+// poussins) et une sur chacun des 4 lampadaires des coins (voir map.c).
+#define LAMP_COUNT 5
+static const Vector3 LAMPS[LAMP_COUNT] = {
+    { 0, 2.85f, 0 }, { 26, 5.8f, 26 }, { -26, 5.8f, 26 }, { 26, 5.8f, -26 }, { -26, 5.8f, -26 }
+};
 
 // Les trois meshes de base (cube 1x1x1, sphere de rayon 1, cylindre rayon 1 hauteur 1)
 static Model mCube, mSphere, mCyl;
@@ -41,6 +49,7 @@ static Vector3 sunDir;
 static int locViewPos, locLightDir, locFogColor, locFogDensity, locFlashPos, locFlashPower;
 static int locEmissive, locChecker, locArena;
 static int locCamo, locCamoSpace, locCamoA, locCamoB, locCamoC;
+static int locLampPos, locLamps;
 
 // Les shaders sont ecrits une fois, avec un en-tete different selon l'API :
 // OpenGL 3.3 (PC / Mac) ou OpenGL ES 2.0 (Android / iOS).
@@ -130,6 +139,8 @@ static const char *FS_BODY =
     "uniform float checker;\n"
     "uniform float arena;\n"
     "uniform float camo;\n"
+    "uniform vec3 lampPos[5];\n"   // lampes de la nuit (positions monde)
+    "uniform float lamps;\n"       // 1 = lampes allumees, 0 = eteintes (passe de l'arme)
     "uniform vec3 camoA;\n"
     "uniform vec3 camoB;\n"
     "uniform vec3 camoC;\n"
@@ -173,7 +184,19 @@ static const char *FS_BODY =
     "    else {\n"
     "        float diff = max(dot(n, -lightDir), 0.0);\n"
     "        float sky = 0.5 + 0.5*n.y;\n"
-    "        col = base*(0.30 + 0.25*sky + 0.70*diff);\n"
+    // Nuit : ambiance faible + clair de lune bleute
+    "        col = base*(0.10 + 0.12*sky*vec3(0.55, 0.65, 1.0) + 0.38*diff*vec3(0.65, 0.75, 1.0));\n"
+    // Lampes : lumiere jaune orangee qui decroit avec la distance au carre
+    // (la premiere, celle du stand, est un peu moins forte)
+    "        if (lamps > 0.5) {\n"
+    "            for (int i = 0; i < 5; i++) {\n"
+    "                vec3 ld = lampPos[i] - fragPosition;\n"
+    "                float d = length(ld);\n"
+    "                float power = (i == 0) ? 2.4 : 5.0;\n"
+    "                float la = max(dot(n, ld/max(d, 0.001)), 0.0)*power/(1.0 + d*d*0.12);\n"
+    "                col += base*vec3(1.0, 0.82, 0.55)*la;\n"
+    "            }\n"
+    "        }\n"
     "        vec3 fl = flashPos - fragPosition;\n"
     "        float fd = length(fl);\n"
     "        float fa = flashPower*max(dot(n, fl/max(fd, 0.001)), 0.0)/(1.0 + fd*fd*0.35);\n"
@@ -212,6 +235,8 @@ void RenderInit(void)
     locChecker = GetShaderLocation(shader, "checker");
     locArena = GetShaderLocation(shader, "arena");
     locCamo = GetShaderLocation(shader, "camo");
+    locLampPos = GetShaderLocation(shader, "lampPos");
+    locLamps = GetShaderLocation(shader, "lamps");
     locCamoSpace = GetShaderLocation(shader, "camoSpace");
     locCamoA = GetShaderLocation(shader, "camoA");
     locCamoB = GetShaderLocation(shader, "camoB");
@@ -282,7 +307,13 @@ void RenderSetFrame(Vector3 viewPos, Vector3 lightDir, float fogDensity, Vector3
     SetU1(locChecker, 0.0f);
     SetU1(locArena, ARENA);
     SetU1(locCamo, 0.0f);
+    SetShaderValueV(shader, locLampPos, LAMPS, SHADER_UNIFORM_VEC3, LAMP_COUNT);
+    SetU1(locLamps, 1.0f);
 }
+
+// Lampes de la nuit allumees ou non. La passe de l'arme les eteint : elle est
+// dessinee dans un repere vue ou les positions des lampes n'auraient pas de sens.
+void RenderSetLamps(bool on) { SetU1(locLamps, on ? 1.0f : 0.0f); }
 
 // Interrupteurs d'effets : ils restent actifs pour tous les dessins suivants
 // jusqu'a ce qu'on les desactive.
@@ -314,13 +345,41 @@ void RenderClearDepth(void)
     glClear(GL_DEPTH_BUFFER_BIT);
 }
 
-// Ciel : degrade vertical du haut de l'ecran jusqu'un peu sous le milieu
-// (+40 px, a peu pres la ligne d'horizon), puis couleur unie en dessous
-// (cachee par le sol en general).
-void DrawSky(int width, int height)
+// Ciel de nuit : degrade vertical du haut de l'ecran jusqu'un peu sous le
+// milieu (+40 px, a peu pres la ligne d'horizon), couleur unie en dessous
+// (cachee par le sol en general), puis etoiles et lune.
+// Les etoiles sont des directions fixes dans le monde, projetees a l'ecran
+// avec la camera : elles tournent avec le regard comme un vrai ciel.
+void DrawSky(Camera3D cam, int width, int height)
 {
     DrawRectangleGradientV(0, 0, width, height/2 + 40, SKY_TOP, SKY_HORIZON);
     DrawRectangle(0, height/2 + 40, width, height/2, SKY_HORIZON);
+
+    Vector3 fwd = Vector3Normalize(Vector3Subtract(cam.target, cam.position));
+    unsigned int seed = 12345u;
+    for (int i = 0; i < 220; i++)
+    {
+        // Petit generateur pseudo-aleatoire a graine fixe : toujours les memes etoiles
+        seed = seed*1103515245u + 12345u; float az = (seed >> 8)*(2*PI/16777216.0f);
+        seed = seed*1103515245u + 12345u; float el = 0.08f + (seed >> 8)*(1.4f/16777216.0f);
+        seed = seed*1103515245u + 12345u; float b = 0.35f + (seed >> 8)*(0.65f/16777216.0f);
+        Vector3 d = V3(cosf(el)*sinf(az), sinf(el), cosf(el)*cosf(az));
+        if (Vector3DotProduct(d, fwd) < 0.2f) continue;   // derriere la camera
+        Vector2 sp = GetWorldToScreenEx(Vector3Add(cam.position, Vector3Scale(d, 100.0f)), cam, width, height);
+        DrawCircleV(sp, b > 0.9f ? 2.0f : 1.3f, Fade((Color){ 230, 235, 255, 255 }, b));
+    }
+
+    // Lune : a l'oppose de la direction de sa lumiere (sunDir pointe vers le sol)
+    Vector3 moon = Vector3Negate(sunDir);
+    if (Vector3DotProduct(moon, fwd) > 0.2f)
+    {
+        Vector2 sp = GetWorldToScreenEx(Vector3Add(cam.position, Vector3Scale(moon, 100.0f)), cam, width, height);
+        float r = height*0.035f;
+        DrawCircleV(sp, r*2.2f, Fade((Color){ 140, 160, 220, 255 }, 0.12f));   // halo
+        DrawCircleV(sp, r, (Color){ 235, 238, 225, 255 });
+        DrawCircleV((Vector2){ sp.x + r*0.3f, sp.y - r*0.2f }, r*0.22f, (Color){ 205, 208, 196, 255 });   // crateres
+        DrawCircleV((Vector2){ sp.x - r*0.35f, sp.y + r*0.3f }, r*0.15f, (Color){ 210, 212, 200, 255 });
+    }
 }
 
 //----------------------------------------------------------------------------------

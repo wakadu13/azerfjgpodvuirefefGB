@@ -307,6 +307,7 @@ static void UpdateWorld(float dt)
     }
     // 3. Elements purement visuels / locaux, mis a jour partout
     HarpoonsUpdate(dt);
+    EnemiesTalkUpdate(dt);   // les mercenaires parlent (bulles locales a chaque machine)
     EffectsUpdate(dt);
     FeedUpdate(dt);
     // 4. Cameras en dernier, pour suivre la position finale des joueurs
@@ -404,7 +405,7 @@ static void RenderView(Camera3D cam, const Player *viewer, bool withWeapon, int 
 {
     // Hors partie (menus), les joueurs ne sont pas dessines
     bool inGame = (G.state == ST_PLAY || G.state == ST_PAUSE || G.state == ST_OVER);
-    DrawSky(w, h);   // degrade du ciel en fond
+    DrawSky(cam, w, h);   // ciel de nuit en fond (degrade, etoiles, lune)
 
     // Le flash de bouche d'un joueur qui tire eclaire la scene
     // (une seule lumiere ponctuelle : le premier tireur trouve ; sinon
@@ -424,7 +425,7 @@ static void RenderView(Camera3D cam, const Player *viewer, bool withWeapon, int 
 
     BeginMode3D(cam);
         // Parametres du shader pour cette vue : position de l'oeil, soleil, brouillard, flash
-        RenderSetFrame(cam.position, RenderSunDir(), 0.018f, flashPos, flashPower);
+        RenderSetFrame(cam.position, RenderSunDir(), 0.022f, flashPos, flashPower);
         MapDraw(G.time, G.chicks - EnemiesHoldingChicks());   // poussins encore sur le comptoir
         PickupsDraw();
         EnemiesDraw();
@@ -434,6 +435,7 @@ static void RenderView(Camera3D cam, const Player *viewer, bool withWeapon, int 
             if (&players[i] != viewer && players[i].connected) PlayerDrawBody(&players[i]);
         EffectsDraw();   // en dernier : particules transparentes par-dessus le reste
     EndMode3D();
+    if (inGame) EnemiesDrawSpeech(cam, w, h);   // bulles de paroles, en 2D par-dessus la scene
 
     // Arme en vue a la premiere personne, dessinee apres la scene pour ne
     // jamais rentrer dans les murs
