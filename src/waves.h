@@ -1,5 +1,5 @@
 /*
- * waves.h - Enchainement des vagues de gloutons et pauses entre elles.
+ * waves.h - Enchainement des vagues de mercenaires et pauses entre elles.
  */
 #ifndef WAVES_H
 #define WAVES_H

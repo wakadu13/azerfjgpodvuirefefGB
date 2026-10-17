@@ -37,12 +37,12 @@ void SpawnParticle(Vector3 p, Vector3 v, float life, float size, float gravity, 
     }
 }
 
-void BurstSauce(Vector3 p, Vector3 dir, int count)
+void BurstImpact(Vector3 p, Vector3 dir, int count)
 {
-    NetRecordEvent(EV_SAUCE, p, dir, count, 0, 0);
+    NetRecordEvent(EV_IMPACT, p, dir, count, 0, 0);
     for (int i = 0; i < count; i++)
     {
-        Color c = (GetRandomValue(0, 2) == 0) ? (Color){ 245, 200, 30, 255 } : (Color){ 200, 20, 15, 255 };   // moutarde / ketchup
+        Color c = (GetRandomValue(0, 2) == 0) ? (Color){ 120, 10, 10, 255 } : (Color){ 200, 20, 15, 255 };
         Vector3 v = Vector3Add(Vector3Scale(dir, Randf(1.0f, 4.0f)), V3(Randf(-2, 2), Randf(0.5f, 4), Randf(-2, 2)));
         SpawnParticle(p, v, Randf(0.5f, 1.2f), Randf(0.04f, 0.1f), 12.0f, c);
     }
@@ -63,13 +63,13 @@ void BurstSparks(Vector3 p, Vector3 normal)
     }
 }
 
-void BurstCrumbs(Vector3 p)
+void BurstFeathers(Vector3 p)
 {
-    NetRecordEvent(EV_CRUMBS, p, V3(0, 0, 0), 0, 0, 0);
-    for (int i = 0; i < 10; i++)
+    NetRecordEvent(EV_FEATHERS, p, V3(0, 0, 0), 0, 0, 0);
+    for (int i = 0; i < 14; i++)
     {
-        Color c = GetRandomValue(0, 1) ? (Color){ 214, 150, 62, 255 } : (Color){ 92, 50, 26, 255 };
-        SpawnParticle(p, V3(Randf(-1.5f, 1.5f), Randf(0.5f, 2.5f), Randf(-1.5f, 1.5f)), Randf(0.5f, 1.0f), Randf(0.03f, 0.06f), 10.0f, c);
+        Color c = GetRandomValue(0, 2) ? (Color){ 255, 214, 50, 255 } : (Color){ 255, 240, 160, 255 };
+        SpawnParticle(p, V3(Randf(-1.2f, 1.2f), Randf(0.5f, 2.0f), Randf(-1.2f, 1.2f)), Randf(0.8f, 1.4f), Randf(0.025f, 0.05f), 3.0f, c);
     }
 }
 

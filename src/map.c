@@ -24,7 +24,7 @@ void MapBuild(void)
 {
     boxCount = 0;
 
-    // Comptoir du stand de burgers (toujours en premier)
+    // Comptoir du stand des poussins (toujours en premier)
     AddBox(0, 0, 4.4f, 1.1f, 1.6f, BX_COUNTER);
 
     // Murs exterieurs avec une porte au milieu de chaque cote
@@ -165,9 +165,9 @@ static void DrawStand(Vector3 c, Vector3 s, float time)
     for (int i = 0; i < 6; i++)
         Box3(I, V3(-2.3f + i*0.92f + 0.46f, 3.05f, 0), NOROT, V3(0.92f, 0.12f, 2.2f), (i % 2) ? white : red);
 
-    // Burger geant tournant en enseigne
+    // Poussin geant tournant en enseigne
     Seg(I, V3(0, 3.1f, 0), V3(0, 4.2f, 0), 0.08f, (Color){ 120, 120, 125, 255 });
-    DrawBurger(MatrixMultiply(MatrixMultiply(MatrixScale(7, 7, 7), MatrixRotateY(time*0.8f)), MatrixTranslate(0, 4.1f, 0)));
+    DrawChick(MatrixMultiply(MatrixMultiply(MatrixScale(7, 7, 7), MatrixRotateY(time*0.8f)), MatrixTranslate(0, 4.1f, 0)), time, 0.25f);
 }
 
 static void DrawBox(const Box *bx, float time)
@@ -196,18 +196,22 @@ static void DrawBox(const Box *bx, float time)
     }
 }
 
-static void DrawStandBurgers(int burgers)
+// Les poussins sautillent sur le comptoir, chacun a son rythme
+static void DrawStandChicks(int chicks, float time)
 {
-    for (int i = 0; i < burgers; i++)
+    for (int i = 0; i < chicks; i++)
     {
         int row = i/6, col = i % 6;
-        float x = -1.75f + col*0.7f;
+        float t = time + i*1.37f;
+        float x = -1.75f + col*0.7f + 0.06f*sinf(t*0.9f);
         float z = (row == 0) ? 0.35f : -0.35f;
-        DrawBurger(MatrixTranslate(x, 1.18f, z));
+        float hop = fmaxf(0.0f, sinf(t*5.0f + i))*0.05f*(sinf(t*0.7f) > 0.3f);
+        float yaw = (row == 0 ? 0.0f : PI) + 0.8f*sinf(t*0.45f + i*2.1f);
+        DrawChick(MatrixMultiply(MatrixRotateY(yaw), MatrixTranslate(x, 1.18f + hop, z)), t, hop > 0.01f ? 0.4f : 0.0f);
     }
 }
 
-void MapDraw(float time, int burgers)
+void MapDraw(float time, int chicks)
 {
     Matrix I = MatrixIdentity();
 
@@ -217,7 +221,7 @@ void MapDraw(float time, int burgers)
     RenderSetChecker(false);
 
     for (int i = 0; i < boxCount; i++) DrawBox(&boxes[i], time);
-    DrawStandBurgers(burgers);
+    DrawStandChicks(chicks, time);
 
     // Lampadaires decoratifs
     for (int k = 0; k < 4; k++)

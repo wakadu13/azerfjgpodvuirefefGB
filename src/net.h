@@ -2,12 +2,12 @@
  * net.h - Multijoueur en reseau (UDP), jusqu'a 4 joueurs.
  *
  * Modele hote / clients :
- *  - L'hote fait tourner la partie (gloutons, vagues, bonus, vie des joueurs)
+ *  - L'hote fait tourner la partie (mercenaires, vagues, bonus, vie des joueurs)
  *    et envoie l'etat du monde aux clients 30 fois par seconde.
  *  - Chaque client deplace et vise lui-meme son joueur (aucune latence
  *    ressentie), detecte ses tirs localement et envoie a l'hote sa position
- *    et ses touches sur les gloutons.
- *  - Les effets visibles par tous (traçantes, ketchup, sons...) sont
+ *    et ses touches sur les mercenaires.
+ *  - Les effets visibles par tous (traçantes, impacts, plumes, sons...) sont
  *    enregistres puis rejoues sur les autres machines.
  */
 #ifndef NET_H
@@ -18,7 +18,7 @@
 typedef enum { NET_OFF, NET_HOST, NET_CLIENT } NetRole;
 typedef enum { NET_IDLE, NET_CONNECTING, NET_CONNECTED, NET_FAILED, NET_LOST } NetStatus;
 
-typedef enum { EV_TRACER = 1, EV_SAUCE, EV_SPARKS, EV_CRUMBS, EV_SOUND, EV_HARPOON } NetEventType;
+typedef enum { EV_TRACER = 1, EV_IMPACT, EV_SPARKS, EV_FEATHERS, EV_SOUND, EV_HARPOON } NetEventType;
 typedef enum { HIT_BULLET, HIT_HARPOON } NetHitKind;
 
 bool NetHost(void);                    // ouvre le port NET_PORT

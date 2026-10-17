@@ -1,5 +1,6 @@
 /*
- * render.c - Shader (lambert + brouillard + eclair du canon) et primitives.
+ * render.c - Shader (lambert + brouillard + eclair du canon + motif
+ * camouflage) et primitives.
  */
 #include "render.h"
 #include "config.h"
@@ -29,6 +30,7 @@ static Shader shader;
 static Vector3 sunDir;
 static int locViewPos, locLightDir, locFogColor, locFogDensity, locFlashPos, locFlashPower;
 static int locEmissive, locChecker, locArena;
+static int locCamo, locCamoSpace, locCamoA, locCamoB, locCamoC;
 
 // Les shaders sont ecrits une fois, avec un en-tete different selon l'API :
 // OpenGL 3.3 (PC / Mac) ou OpenGL ES 2.0 (Android / iOS).
@@ -46,17 +48,23 @@ static const char *VS_BODY =
     "uniform mat4 mvp;\n"
     "uniform mat4 matModel;\n"
     "uniform mat4 matNormal;\n"
+    "uniform mat4 camoSpace;\n"
     "VARY vec3 fragPosition;\n"
     "VARY vec3 fragNormal;\n"
+    "VARY vec3 camoPos;\n"
     "void main() {\n"
     "    fragPosition = vec3(matModel*vec4(vertexPosition, 1.0));\n"
+    "    camoPos = vec3(camoSpace*vec4(fragPosition, 1.0));\n"
     "    fragNormal = normalize(vec3(matNormal*vec4(vertexNormal, 0.0)));\n"
     "    gl_Position = mvp*vec4(vertexPosition, 1.0);\n"
     "}\n";
 
+// Treillis : le motif camouflage est un bruit 3D calcule dans le repere du
+// corps (camoSpace), il suit donc le personnage sans "glisser".
 static const char *FS_BODY =
     "VARY vec3 fragPosition;\n"
     "VARY vec3 fragNormal;\n"
+    "VARY vec3 camoPos;\n"
     "uniform vec4 colDiffuse;\n"
     "uniform vec3 viewPos;\n"
     "uniform vec3 lightDir;\n"
@@ -67,6 +75,22 @@ static const char *FS_BODY =
     "uniform float emissive;\n"
     "uniform float checker;\n"
     "uniform float arena;\n"
+    "uniform float camo;\n"
+    "uniform vec3 camoA;\n"
+    "uniform vec3 camoB;\n"
+    "uniform vec3 camoC;\n"
+    "float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719)))*43758.5453); }\n"
+    "float noise3(vec3 p) {\n"
+    "    vec3 i = floor(p);\n"
+    "    vec3 f = fract(p);\n"
+    "    f = f*f*(3.0 - 2.0*f);\n"
+    "    float a = mix(hash3(i), hash3(i + vec3(1.0, 0.0, 0.0)), f.x);\n"
+    "    float b = mix(hash3(i + vec3(0.0, 1.0, 0.0)), hash3(i + vec3(1.0, 1.0, 0.0)), f.x);\n"
+    "    float c = mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), f.x);\n"
+    "    float d = mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), f.x);\n"
+    "    return mix(mix(a, b, f.y), mix(c, d, f.y), f.z);\n"
+    "}\n"
+    "float camoField(vec3 p) { return noise3(p*2.6)*0.65 + noise3(p*5.5 + 3.7)*0.35; }\n"
     "void main() {\n"
     "    vec3 base = colDiffuse.rgb;\n"
     "    if (checker > 0.5) {\n"
@@ -81,6 +105,13 @@ static const char *FS_BODY =
     "            base *= mix(0.86, 1.0, c);\n"
     "            base = mix(base, base*0.6, grout);\n"
     "        }\n"
+    "    }\n"
+    "    if (camo > 0.5) {\n"
+    "        float n = camoField(camoPos);\n"
+    "        float m = camoField(camoPos.zxy + vec3(7.3, 1.9, 4.1));\n"
+    "        if (n > 0.6) base = camoA;\n"
+    "        else if (n < 0.38) base = camoB;\n"
+    "        if (m > 0.66) base = camoC;\n"
     "    }\n"
     "    vec3 n = normalize(fragNormal);\n"
     "    vec3 col;\n"
@@ -119,6 +150,11 @@ void RenderInit(void)
     locEmissive = GetShaderLocation(shader, "emissive");
     locChecker = GetShaderLocation(shader, "checker");
     locArena = GetShaderLocation(shader, "arena");
+    locCamo = GetShaderLocation(shader, "camo");
+    locCamoSpace = GetShaderLocation(shader, "camoSpace");
+    locCamoA = GetShaderLocation(shader, "camoA");
+    locCamoB = GetShaderLocation(shader, "camoB");
+    locCamoC = GetShaderLocation(shader, "camoC");
     sunDir = Vector3Normalize(V3(-0.45f, -1.0f, -0.3f));
 
     mCube = LoadModelFromMesh(GenMeshCube(1, 1, 1));
@@ -140,6 +176,20 @@ void RenderClose(void)
     UnloadShader(shader);
 }
 
+Model RenderLoadModel(Mesh mesh)
+{
+    UploadMesh(&mesh, false);
+    Model m = LoadModelFromMesh(mesh);
+    m.materials[0].shader = shader;
+    return m;
+}
+
+void RenderUnloadModel(Model m)
+{
+    m.materials[0].shader = (Shader){ rlGetShaderIdDefault(), rlGetShaderLocsDefault() };
+    UnloadModel(m);
+}
+
 Vector3 RenderSunDir(void) { return sunDir; }
 
 void RenderSetFrame(Vector3 viewPos, Vector3 lightDir, float fogDensity, Vector3 flashPos, float flashPower)
@@ -154,10 +204,23 @@ void RenderSetFrame(Vector3 viewPos, Vector3 lightDir, float fogDensity, Vector3
     SetU1(locEmissive, 0.0f);
     SetU1(locChecker, 0.0f);
     SetU1(locArena, ARENA);
+    SetU1(locCamo, 0.0f);
 }
 
 void RenderSetEmissive(bool on) { SetU1(locEmissive, on ? 1.0f : 0.0f); }
 void RenderSetChecker(bool on) { SetU1(locChecker, on ? 1.0f : 0.0f); }
+
+static Vector3 ColorRGB(Color c) { return V3(c.r/255.0f, c.g/255.0f, c.b/255.0f); }
+
+void RenderSetCamo(bool on, Matrix body, Color a, Color b, Color c)
+{
+    SetU1(locCamo, on ? 1.0f : 0.0f);
+    if (!on) return;
+    SetShaderValueMatrix(shader, locCamoSpace, MatrixInvert(body));
+    SetU3(locCamoA, ColorRGB(a));
+    SetU3(locCamoB, ColorRGB(b));
+    SetU3(locCamoC, ColorRGB(c));
+}
 
 void RenderClearDepth(void)
 {
@@ -174,7 +237,7 @@ void DrawSky(int width, int height)
 //----------------------------------------------------------------------------------
 // Primitives
 //----------------------------------------------------------------------------------
-static void Part(Model *m, Matrix world, Color c)
+void DrawPart(Model *m, Matrix world, Color c)
 {
     m->transform = world;
     DrawModel(*m, (Vector3){ 0 }, 1.0f, c);
@@ -185,9 +248,19 @@ Matrix TRS(Vector3 t, Vector3 r, Vector3 s)
     return MatrixMultiply(MatrixMultiply(MatrixScale(s.x, s.y, s.z), MatrixRotateXYZ(r)), MatrixTranslate(t.x, t.y, t.z));
 }
 
-void Box3(Matrix parent, Vector3 t, Vector3 r, Vector3 s, Color c) { Part(&mCube, MatrixMultiply(TRS(t, r, s), parent), c); }
+void Box3(Matrix parent, Vector3 t, Vector3 r, Vector3 s, Color c) { DrawPart(&mCube, MatrixMultiply(TRS(t, r, s), parent), c); }
 
-void Ball(Matrix parent, Vector3 t, Vector3 radii, Color c) { Part(&mSphere, MatrixMultiply(TRS(t, NOROT, radii), parent), c); }
+void Ball(Matrix parent, Vector3 t, Vector3 radii, Color c) { DrawPart(&mSphere, MatrixMultiply(TRS(t, NOROT, radii), parent), c); }
+
+void BallAxes(Matrix parent, Vector3 t, Vector3 x, Vector3 y, Vector3 radii, Color c)
+{
+    Vector3 z = Vector3CrossProduct(x, y);
+    Matrix frame = { x.x, y.x, z.x, t.x,
+                     x.y, y.y, z.y, t.y,
+                     x.z, y.z, z.z, t.z,
+                     0, 0, 0, 1 };
+    DrawPart(&mSphere, MatrixMultiply(MatrixMultiply(MatrixScale(radii.x, radii.y, radii.z), frame), parent), c);
+}
 
 void Seg(Matrix parent, Vector3 a, Vector3 b, float radius, Color c)
 {
@@ -199,7 +272,7 @@ void Seg(Matrix parent, Vector3 a, Vector3 b, float radius, Color c)
     if (len < 1e-5f) return;
     Quaternion q = QuaternionFromVector3ToVector3(V3(0, 1, 0), Vector3Scale(d, 1.0f/len));
     Matrix m = MatrixMultiply(MatrixMultiply(MatrixScale(radius, len, radius), QuaternionToMatrix(q)), MatrixTranslate(a.x, a.y, a.z));
-    Part(&mCyl, MatrixMultiply(m, parent), c);
+    DrawPart(&mCyl, MatrixMultiply(m, parent), c);
 }
 
 void Limb(Matrix parent, Vector3 a, Vector3 b, float radius, Color c)
@@ -214,19 +287,26 @@ void DrawBlobShadow(Vector3 p, float radius)
     Seg(MatrixIdentity(), V3(p.x, 0.01f, p.z), V3(p.x, 0.012f, p.z), radius, (Color){ 0, 0, 0, 90 });
 }
 
-void DrawBurger(Matrix parent)
+void DrawChick(Matrix parent, float t, float flap)
 {
-    const Color bun = { 214, 150, 62, 255 };
-    Seg(parent, V3(0, 0, 0), V3(0, 0.05f, 0), 0.15f, Shade(bun, 0.9f));                                // pain du bas
-    Seg(parent, V3(0, 0.05f, 0), V3(0, 0.095f, 0), 0.16f, (Color){ 92, 50, 26, 255 });                   // steak
-    Box3(parent, V3(0, 0.1f, 0), V3(0, PI/4, 0), V3(0.27f, 0.012f, 0.27f), (Color){ 250, 200, 40, 255 }); // cheddar
-    Seg(parent, V3(0, 0.1f, 0), V3(0, 0.115f, 0), 0.168f, (Color){ 90, 175, 60, 255 });                  // salade
-    Seg(parent, V3(0, 0.115f, 0), V3(0, 0.13f, 0), 0.14f, (Color){ 210, 50, 40, 255 });                  // tomate
-    Ball(parent, V3(0, 0.13f, 0), V3(0.155f, 0.09f, 0.155f), bun);                                       // pain du haut
-    for (int i = 0; i < 6; i++)                                                                          // sesame
+    const Color yellow = { 255, 214, 50, 255 }, wing = { 240, 186, 30, 255 }, orange = { 255, 135, 25, 255 };
+    // Picore de temps en temps
+    float peck = powf(fmaxf(0.0f, sinf(t*1.7f)), 8.0f);
+    Vector3 head = V3(0, 0.19f - 0.05f*peck, 0.06f + 0.04f*peck);
+
+    Ball(parent, V3(0, 0.09f, 0), V3(0.1f, 0.085f, 0.11f), yellow);
+    Ball(parent, V3(0, 0.12f, -0.1f), V3(0.04f, 0.03f, 0.04f), yellow);   // queue
+    Ball(parent, head, V3(0.07f, 0.068f, 0.07f), yellow);
+    Ball(parent, Vector3Add(head, V3(0, 0.07f, -0.01f)), V3(0.012f, 0.03f, 0.012f), yellow);   // houppette
+    Box3(parent, Vector3Add(head, V3(0, -0.005f, 0.075f)), V3(0, PI/4, 0), V3(0.035f, 0.02f, 0.035f), orange);   // bec
+    for (int k = -1; k <= 1; k += 2)
     {
-        float a = i*1.1f;
-        float r = 0.05f + 0.04f*(i % 2);
-        Ball(parent, V3(cosf(a)*r, 0.13f + 0.085f - r*0.35f, sinf(a)*r), V3(0.012f, 0.007f, 0.018f), (Color){ 250, 240, 210, 255 });
+        Ball(parent, Vector3Add(head, V3(0.04f*k, 0.015f, 0.055f)), V3(0.013f, 0.016f, 0.01f), BLACK);
+        // Ailes : battent quand on l'attrape
+        float a = 0.15f + flap*(0.5f + 0.5f*sinf(t*38.0f))*1.1f;
+        Matrix wm = MatrixMultiply(MatrixMultiply(MatrixRotateZ(k*a), MatrixTranslate(0.09f*k, 0.13f, 0)), parent);
+        Ball(wm, V3(0, -0.035f, -0.01f), V3(0.025f, 0.05f, 0.07f), wing);
+        Seg(parent, V3(0.035f*k, 0.0f, 0.02f), V3(0.035f*k, 0.04f, 0.0f), 0.008f, orange);   // pattes
+        Box3(parent, V3(0.035f*k, 0.005f, 0.035f), NOROT, V3(0.03f, 0.01f, 0.05f), orange);
     }
 }

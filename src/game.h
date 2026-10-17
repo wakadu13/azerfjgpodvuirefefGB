@@ -30,7 +30,7 @@ typedef struct {
     float spawnT, interT, bannerT;
 
     // Partie
-    int score, best, burgers;
+    int score, best, chicks;
     char overReason[96];
     char titleMsg[96];       // message affiche au menu (ex : connexion perdue)
 } Game;

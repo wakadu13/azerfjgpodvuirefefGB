@@ -26,7 +26,7 @@ static const Color AMMO_COLOR = { 230, 200, 120, 255 };
 static const Color PANEL = { 0, 0, 0, 110 };
 
 //----------------------------------------------------------------------------------
-// Fil d'actualite (eliminations, bonus, burgers manges...)
+// Fil d'actualite (eliminations, bonus, poussins enleves...)
 //----------------------------------------------------------------------------------
 void FeedClear(void) { memset(feed, 0, sizeof(feed)); }
 
@@ -152,7 +152,7 @@ static void DrawHarpoonAmmo(const Player *p, int w, int h, int cx, int cy)
     snprintf(buf, sizeof(buf), "/ %d", wp->harpoons);
     TextShadow(buf, x + MeasureText("0", 56) + 12, y + 26, 26, LIGHTGRAY);
     TextShadow("HARPON", x + 140, y + 4, 20, SKYBLUE);
-    TextShadow("1 coup = 1 glouton", x + 98, y + 30, 14, LIGHTGRAY);
+    TextShadow("1 coup = 1 ennemi", x + 98, y + 30, 14, LIGHTGRAY);
     for (int i = 0; i < HARPOON_MAX; i++)   // une encoche par fleche en reserve
         DrawRectangle(x + i*18, y + 62, 14, 5, (i < wp->harpoons) ? SKYBLUE : (Color){ 80, 80, 80, 200 });
 
@@ -213,7 +213,7 @@ static void DrawRadar(const Player *p, int cx, int cy, int R)
         if (!e->active || e->state == ES_DEAD) continue;
         sp = TO_RADAR(e->pos.x, e->pos.z);
         if (Vector2Distance(sp, center) > R - 3) continue;
-        DrawCircleV(sp, e->type == E_BOSS ? 6.0f : 3.0f, e->state == ES_EAT ? ORANGE : RED);
+        DrawCircleV(sp, e->type == E_BOSS ? 6.0f : 3.0f, e->state == ES_GRAB ? ORANGE : RED);
     }
     for (int i = 0; i < numPlayers; i++)   // coequipiers
     {
@@ -275,29 +275,29 @@ void HudDrawPlayer(const Player *p, int w, int h, bool showName)
     }
     DrawHealth(p, h, showName);
     DrawAmmo(p, w, h, cx, cy);
-    DrawRadar(p, 95, split ? 165 : 105, 75);   // en ecran partage, sous la barre de burgers
+    DrawRadar(p, 95, split ? 165 : 105, 75);   // en ecran partage, sous la barre de poussins
 }
 
 //----------------------------------------------------------------------------------
 // HUD commun
 //----------------------------------------------------------------------------------
-static void DrawBurgerIcon(int x, int y, bool full)
+static void DrawChickIcon(int x, int y, bool here)
 {
-    Color bun = full ? (Color){ 230, 160, 60, 255 } : (Color){ 90, 90, 90, 160 };
-    Color meat = full ? (Color){ 100, 55, 25, 255 } : (Color){ 60, 60, 60, 160 };
-    Color lettuce = full ? (Color){ 100, 200, 70, 255 } : (Color){ 70, 70, 70, 160 };
-    DrawCircleSector((Vector2){ (float)x, y + 8.0f }, 11, 180, 360, 16, bun);
-    DrawRectangle(x - 12, y + 8, 24, 3, lettuce);
-    DrawRectangle(x - 11, y + 11, 22, 5, meat);
-    DrawRectangleRounded((Rectangle){ x - 11.0f, y + 16.0f, 22, 5 }, 0.6f, 4, bun);
+    Color body = here ? (Color){ 255, 214, 50, 255 } : (Color){ 90, 90, 90, 160 };
+    Color beak = here ? (Color){ 255, 140, 30, 255 } : (Color){ 70, 70, 70, 160 };
+    DrawEllipse(x, y + 15, 11, 9, body);                               // corps
+    DrawCircle(x + 5, y + 6, 7, body);                                 // tete
+    DrawTriangle((Vector2){ x + 11.0f, y + 4.0f }, (Vector2){ x + 11.0f, y + 9.0f }, (Vector2){ x + 16.0f, y + 6.5f }, beak);
+    DrawCircle(x + 7, y + 5, 1.6f, here ? BLACK : (Color){ 50, 50, 50, 160 });   // oeil
+    DrawEllipse(x - 2, y + 15, 6, 4, here ? (Color){ 235, 185, 30, 255 } : (Color){ 80, 80, 80, 160 });   // aile
 }
 
-static void DrawBurgerBar(int cx)
+static void DrawChickBar(int cx)
 {
-    int bw = MAX_BURGERS*30;
+    int bw = MAX_CHICKS*30;
     DrawRectangle(cx - bw/2 - 12, 8, bw + 24, 62, PANEL);
-    TextCenter("BURGERS A PROTEGER", cx, 12, 16, G.burgers <= 3 ? (Color){ 255, 80, 60, 255 } : RAYWHITE);
-    for (int i = 0; i < MAX_BURGERS; i++) DrawBurgerIcon(cx - bw/2 + 15 + i*30, 34, i < G.burgers);
+    TextCenter("POUSSINS A PROTEGER", cx, 12, 16, G.chicks <= 3 ? (Color){ 255, 80, 60, 255 } : RAYWHITE);
+    for (int i = 0; i < MAX_CHICKS; i++) DrawChickIcon(cx - bw/2 + 15 + i*30, 34, i < G.chicks);
 }
 
 static void DrawWaveBanners(int cx, int h)
@@ -308,13 +308,13 @@ static void DrawWaveBanners(int cx, int h)
         float a = fminf(1.0f, G.bannerT);
         snprintf(buf, sizeof(buf), "VAGUE %d", G.wave);
         TextCenter(buf, cx, h/4, 64, Fade(GOLD_TEXT, a));
-        TextCenter(G.wave % 5 == 0 ? "ALERTE : LE ROI DU GRAS ARRIVE !" : "Les gloutons ont faim...", cx, h/4 + 70, 24, Fade(RAYWHITE, a));
+        TextCenter(G.wave % 5 == 0 ? "ALERTE : LE CHEF DE GUERRE ARRIVE !" : "Les mercenaires approchent...", cx, h/4 + 70, 24, Fade(RAYWHITE, a));
     }
     if (G.inIntermission)
     {
         snprintf(buf, sizeof(buf), "VAGUE %d TERMINEE", G.wave);
         TextCenter(buf, cx, h/4, 52, (Color){ 120, 255, 120, 255 });
-        TextCenter("+2 burgers  +90 munitions  +3 harpons  +25 PV", cx, h/4 + 60, 22, RAYWHITE);
+        TextCenter("+2 poussins  +90 munitions  +3 harpons  +25 PV", cx, h/4 + 60, 22, RAYWHITE);
         snprintf(buf, sizeof(buf), "Prochaine vague dans %d...", (int)ceilf(G.interT));
         TextCenter(buf, cx, h/4 + 92, 22, LIGHTGRAY);
     }
@@ -339,7 +339,7 @@ void HudDrawShared(int w, int h, bool split)
 {
     char buf[96];
     int cx = w/2;
-    DrawBurgerBar(cx);
+    DrawChickBar(cx);
 
     int remaining = G.alive + G.toSpawn + (G.bossPending ? 1 : 0);
     if (split || TouchMode())
@@ -413,7 +413,7 @@ void HudDrawTitle(int w, int h)
     DrawRectangle(0, 0, w, h, (Color){ 0, 0, 0, 110 });
     TextCenter("BURGER RUSH", cx, y, 90, (Color){ 255, 200, 60, 255 });
     TextCenter("OPERATION HK416", cx, y + 92, 34, RAYWHITE);
-    TextCenter("Des hordes de gloutons veulent devorer votre stand de burgers. Defendez-le !", cx, y + 134, 18, LIGHTGRAY);
+    TextCenter("Des mercenaires enchaines veulent enlever vos poussins. Protegez-les !", cx, y + 134, 18, LIGHTGRAY);
 
     static const char *labels[] = { "SOLO", "ECRAN PARTAGE (2 joueurs)", "HEBERGER une partie reseau", "REJOINDRE une partie reseau" };
     static const char *keys[] = { "1", "2", "3", "4" };
@@ -431,7 +431,7 @@ void HudDrawTitle(int w, int h)
     if (TouchMode())
     {
         TextCenter("Gauche : joystick pour bouger   -   Droite : glisser pour viser", cx, (int)ty, 17, LIGHTGRAY);
-        TextCenter("FEU (glisser dessus pour viser), VISER, SAUT, RECH., HARPON : 1 coup = 1 glouton projete !", cx, (int)ty + 22, 17, LIGHTGRAY);
+        TextCenter("FEU (glisser dessus pour viser), VISER, SAUT, RECH., HARPON : 1 coup = 1 ennemi projete !", cx, (int)ty + 22, 17, LIGHTGRAY);
     }
     else
     {
@@ -439,7 +439,7 @@ void HudDrawTitle(int w, int h)
             "JOUEUR 1 : ZQSD/WASD, souris, clic G tirer, clic D viser, R recharger, 1/2/E/molette : HK416 / HARPON, MAJ sprint, ESPACE sauter",
             "JOUEUR 2 (manette) : sticks, RT tirer, LT viser, RB harpon, X recharger, A sauter, L3 sprint",
             "JOUEUR 2 (clavier) : IJKL bouger, fleches viser, CTRL D tirer, MAJ D viser, M harpon, U recharger, O sauter",
-            "HARPON : tue et projette le glouton touche en un coup        ECHAP / P / START : pause",
+            "HARPON : tue et projette le mercenaire touche en un coup        ECHAP / P / START : pause",
         };
         for (int i = 0; i < 4; i++) TextCenter(lines[i], cx, (int)ty + i*22, 16, i == 3 ? SKYBLUE : LIGHTGRAY);
     }

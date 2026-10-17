@@ -94,7 +94,7 @@ void HarpoonsUpdate(float dt)
         if (enemy >= 0)
         {
             HitEnemy(h, enemy, ray.direction);
-            h->active = false;   // la fleche reste plantee dans le glouton (dessinee avec lui)
+            h->active = false;   // la fleche reste plantee dans le mercenaire (dessinee avec lui)
             continue;
         }
         if (hitWorld)

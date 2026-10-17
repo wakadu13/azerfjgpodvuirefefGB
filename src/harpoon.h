@@ -1,7 +1,7 @@
 /*
  * harpoon.h - Fleches de harpon en vol.
  *
- * Une fleche est un vrai projectile (vitesse, legere chute). Le glouton
+ * Une fleche est un vrai projectile (vitesse, legere chute). Le mercenaire
  * qu'elle touche est tue d'un coup et projete (voir EnemyHarpoon). Une
  * fleche qui touche le decor y reste plantee quelques secondes.
  */

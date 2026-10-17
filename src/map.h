@@ -1,5 +1,5 @@
 /*
- * map.h - Arene : murs, caisses, stand de burgers et collisions.
+ * map.h - Arene : murs, caisses, stand des poussins et collisions.
  */
 #ifndef MAP_H
 #define MAP_H
@@ -18,7 +18,7 @@ extern Box boxes[MAX_BOXES];   // boxes[0] est toujours le comptoir du stand
 extern int boxCount;
 
 void MapBuild(void);
-void MapDraw(float time, int burgers);
+void MapDraw(float time, int chicks);
 
 // Repousse un cercle (plan XZ) hors des boites qu'il touche.
 void ResolveCircle(Vector3 *p, float radius, float feetY, float height);

@@ -50,7 +50,7 @@ void GameInit(void)
 {
     MapBuild();
     G.state = ST_TITLE;
-    G.burgers = START_BURGERS;
+    G.chicks = START_CHICKS;
     // Tests automatiques (emulateurs dans GitHub Actions) : partie solo directe
     if (getenv("BR_AUTOSTART")) GameStart(MODE_SOLO);
 }
@@ -58,6 +58,7 @@ void GameInit(void)
 void GameClose(void)
 {
     NetStop();
+    EnemyModelsUnload();
     for (int i = 0; i < 2; i++) if (views[i].id) UnloadRenderTexture(views[i]);
 }
 
@@ -80,7 +81,7 @@ void GameStart(GameMode mode)
     G.time = keep.time;
     G.round = keep.round + 1;
     G.mode = mode;
-    G.burgers = START_BURGERS;
+    G.chicks = START_CHICKS;
     G.state = ST_PLAY;
     netMenu = false;
 
@@ -108,7 +109,7 @@ static void BackToTitle(const char *message)
     G.state = ST_TITLE;
     G.mode = MODE_SOLO;
     G.titleT = 0;
-    G.burgers = START_BURGERS;
+    G.chicks = START_CHICKS;
     snprintf(G.titleMsg, sizeof(G.titleMsg), "%s", message ? message : "");
     netMenu = false;
     CaptureCursor(false);
@@ -320,7 +321,7 @@ void GameUpdate(float dt)
             break;
         case ST_OVER:
             EffectsUpdate(dt);
-            for (int i = 0; i < MAX_ENEMIES; i++)   // les gloutons continuent de se dandiner
+            for (int i = 0; i < MAX_ENEMIES; i++)   // les mercenaires continuent de bouger
                 if (enemies[i].active && enemies[i].state == ES_WALK) enemies[i].phase += dt*3.0f;
             if (NetIsAuthority() && (IsKeyPressed(KEY_R) || IsKeyPressed(KEY_ENTER) ||
                                      AnyGamepadPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN) || UiButtonHit(HudOverButton(0))))
@@ -358,7 +359,7 @@ static void RenderView(Camera3D cam, const Player *viewer, bool withWeapon, int 
 
     BeginMode3D(cam);
         RenderSetFrame(cam.position, RenderSunDir(), 0.018f, flashPos, flashPower);
-        MapDraw(G.time, G.burgers);
+        MapDraw(G.time, G.chicks - EnemiesHoldingChicks());
         PickupsDraw();
         EnemiesDraw();
         HarpoonsDraw();

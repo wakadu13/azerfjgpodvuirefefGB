@@ -9,7 +9,7 @@
  *   SNAPSHOT hote -> client : etat complet du monde
  *   BYE      dans les deux sens : depart
  *
- * Les touches sur les gloutons doivent arriver a coup sur : le client les
+ * Les touches sur les mercenaires doivent arriver a coup sur : le client les
  * renvoie dans chaque paquet jusqu'a ce que l'hote en accuse reception.
  * Les effets (sons, particules) peuvent se perdre sans gravite.
  * Toutes les cibles (x86, ARM) etant little-endian, les nombres sont copies tels quels.
@@ -35,7 +35,7 @@
 #include <string.h>
 
 #define NET_MAGIC    0x48535242u   // "BRSH"
-#define NET_VERSION  2
+#define NET_VERSION  3
 #define PACKET_MAX   8192
 #define MAX_EVENTS   64
 #define MAX_HITS     32
@@ -179,9 +179,9 @@ static void ApplyEvent(const NetEvent *e)
     switch (e->type)
     {
         case EV_TRACER: AddTracer(e->a, e->b); break;
-        case EV_SAUCE:  BurstSauce(e->a, e->b, e->param); break;
+        case EV_IMPACT:  BurstImpact(e->a, e->b, e->param); break;
         case EV_SPARKS: BurstSparks(e->a, e->b); break;
-        case EV_CRUMBS: BurstCrumbs(e->a); break;
+        case EV_FEATHERS: BurstFeathers(e->a); break;
         case EV_HARPOON: HarpoonSpawnRemote(e->a, e->b); break;
         case EV_SOUND:
             if (e->param < SND_COUNT)   // les tirs des autres un peu moins forts que les siens
@@ -455,11 +455,11 @@ static void PutPlayer(Buf *b, const Player *p)
 static void PutEnemy(Buf *b, int idx, const Enemy *e)
 {
     PutU8(b, idx); PutU8(b, e->type); PutU8(b, e->state);
-    PutU8(b, (e->hasCap ? 1 : 0) | (e->launched ? 2 : 0) | (e->airborne ? 4 : 0));
-    PutU8(b, e->shirt); PutU8(b, e->skin); PutU8(b, e->pants); PutU8(b, e->cap);
+    PutU8(b, (e->launched ? 2 : 0) | (e->airborne ? 4 : 0));
+    PutU8(b, e->camo); PutU8(b, e->skin); PutU8(b, e->paint); PutU8(b, e->gear);
     PutVec3(b, e->pos); PutF32(b, e->yaw); PutF32(b, e->spin);
     PutF32(b, e->hp); PutF32(b, e->sz); PutF32(b, e->fat);
-    PutF32(b, e->eatT); PutF32(b, e->deadT);
+    PutF32(b, e->grabT); PutF32(b, e->deadT);
     PutU8(b, (int)(Clamp(e->hitFlash, 0, 1)*255)); PutU8(b, (int)(Clamp(e->attackAnim, 0, 1)*255));
 }
 
@@ -475,7 +475,7 @@ static void HostSendSnapshot(int id, uint8_t *data)
     PutI16(&b, G.wave); PutI16(&b, G.toSpawn); PutI16(&b, G.alive);
     PutU8(&b, (G.bossPending ? 1 : 0) | (G.inIntermission ? 2 : 0));
     PutF32(&b, G.interT); PutF32(&b, G.bannerT);
-    PutI32(&b, G.score); PutU8(&b, G.burgers);
+    PutI32(&b, G.score); PutU8(&b, G.chicks);
     PutStr(&b, G.overReason);
 
     for (int i = 0; i < MAX_PLAYERS; i++) PutPlayer(&b, &players[i]);
@@ -639,10 +639,10 @@ static void ClientReadEnemies(Buf *b)
     for (int n = 0; n < count && !b->err; n++)
     {
         int idx = GetU8(b), type = GetU8(b), state = GetU8(b), eflags = GetU8(b);
-        int shirt = GetU8(b), skin = GetU8(b), pants = GetU8(b), cap = GetU8(b);
+        int camo = GetU8(b), skin = GetU8(b), paint = GetU8(b), gear = GetU8(b);
         Vector3 pos = GetVec3(b);
         float yaw = GetF32(b), spin = GetF32(b);
-        float hp = GetF32(b), sz = GetF32(b), fat = GetF32(b), eatT = GetF32(b), deadT = GetF32(b);
+        float hp = GetF32(b), sz = GetF32(b), fat = GetF32(b), grabT = GetF32(b), deadT = GetF32(b);
         float hitFlash = GetU8(b)/255.0f, attackAnim = GetU8(b)/255.0f;
         if (b->err || idx >= MAX_ENEMIES) break;
 
@@ -652,16 +652,15 @@ static void ClientReadEnemies(Buf *b)
         if (e->predictT > 0) continue;   // on garde la mort predite (et le vol) en attendant l'hote
 
         if (state == ES_DEAD && e->state != ES_DEAD) e->deadT = deadT;
-        if (state == ES_EAT && e->state != ES_EAT) e->eatT = eatT;
+        if (state == ES_GRAB && (e->state != ES_GRAB || fabsf(e->grabT - grabT) > 0.3f)) e->grabT = grabT;
         e->active = true;
         e->type = (EnemyType)type;
         e->state = (EnemyState)state;
-        e->hasCap = eflags & 1;
         e->launched = eflags & 2;
         e->airborne = eflags & 4;
         e->netSpin = spin;
-        e->shirt = (unsigned char)shirt; e->skin = (unsigned char)skin;
-        e->pants = (unsigned char)pants; e->cap = (unsigned char)cap;
+        e->camo = (unsigned char)camo; e->skin = (unsigned char)skin;
+        e->paint = (unsigned char)paint; e->gear = (unsigned char)gear;
         e->hp = hp; e->sz = sz; e->fat = fat;
         e->hitFlash = fmaxf(e->hitFlash, hitFlash);
         e->attackAnim = fmaxf(e->attackAnim, attackAnim);
@@ -734,7 +733,7 @@ static void ClientHandleSnapshot(Buf *b)
     int wave = GetI16(b), toSpawn = GetI16(b), alive = GetI16(b);
     int flags = GetU8(b);
     float interT = GetF32(b), bannerT = GetF32(b);
-    int score = GetI32(b), burgers = GetU8(b);
+    int score = GetI32(b), chicks = GetU8(b);
     char reason[96];
     GetStr(b, reason, sizeof(reason));
     if (b->err) return;
@@ -748,7 +747,7 @@ static void ClientHandleSnapshot(Buf *b)
     G.interT = interT;
     G.bannerT = bannerT;
     G.score = score;
-    G.burgers = burgers;
+    G.chicks = chicks;
     snprintf(G.overReason, sizeof(G.overReason), "%s", reason);
     if (newRound) GameNetRoundStarted();
 
