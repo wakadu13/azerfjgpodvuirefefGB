@@ -21,11 +21,13 @@
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
         <!-- Ecrans tres allonges (20:9 et plus) : pas de bandes noires ni de mode compatibilite -->
         <meta-data android:name="android.max_aspect" android:value="3.0" />
+        <!-- configChanges : le jeu gere lui-meme ces changements (rotation, taille...)
+             au lieu d'etre ferme et relance par Android, ce que raylib ne supporte pas -->
         <activity
             android:name="android.app.NativeActivity"
             android:exported="true"
             android:screenOrientation="landscape"
-            android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|keyboard|navigation|density|uiMode"
+            android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|keyboard|navigation|density|uiMode|touchscreen|layoutDirection|colorMode|fontScale|locale|mcc|mnc"
             android:launchMode="singleTask"
             android:resizeableActivity="true"
             android:maxAspectRatio="3.0">

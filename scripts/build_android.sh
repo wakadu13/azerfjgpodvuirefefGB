@@ -33,6 +33,9 @@ TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
 echo "build-tools : $BT"
 echo "plateforme  : $PLATFORM_JAR"
 
+# Correctif de raylib : gere la rotation de l'ecran au demarrage (voir le script)
+python3 scripts/patch_raylib_android.py "$RAYLIB/src/platforms/rcore_android.c"
+
 # On repart d'un dossier propre ; apk/ contiendra l'arborescence lib/<abi>/libmain.so
 rm -rf "$OUT"
 mkdir -p "$OUT/apk"
@@ -61,9 +64,12 @@ for ABI in arm64-v8a x86_64; do
     COMMON="-O2 -fPIC -ffunction-sections -funwind-tables -fstack-protector-strong"
 
     # 1a. raylib : plateforme Android, rendu OpenGL ES 2
+    # MA_NO_AAUDIO : le son passe par OpenSL ES. Avec AAudio, fermer le son en
+    # quittant le jeu le faisait planter sur certains Android ("Pure virtual
+    # function called" dans le thread AudioTrack).
     echo "=== raylib pour $ABI"
     for m in $RAYLIB_MODULES; do
-        $CC -std=gnu99 $COMMON -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 \
+        $CC -std=gnu99 $COMMON -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 -DMA_NO_AAUDIO \
             -I"$RAYLIB/src" -I"$GLUE" -c "$RAYLIB/src/$m.c" -o "$OBJ/rl_$m.o"
     done
     # 1b. la colle native_app_glue

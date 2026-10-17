@@ -15,6 +15,11 @@ adb root || true
 # Attend que l'emulateur soit pret, installe l'APK (-r : remplace une version existante)
 # et vide les logs pour ne garder que ceux de ce test
 adb wait-for-device
+# Ecran en paysage avant de lancer le jeu (rotation automatique coupee, rotation
+# utilisateur = 90 degres) : le test ne depend pas de la rotation au demarrage
+adb shell settings put system accelerometer_rotation 0 || true
+adb shell settings put system user_rotation 1 || true
+sleep 2
 adb install -r "$APK"
 adb logcat -c
 # Lance l'activite native du jeu, puis laisse 25 s pour le demarrage (emulateur lent)
