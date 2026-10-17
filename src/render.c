@@ -347,6 +347,28 @@ void RenderSetFrame(Vector3 viewPos, Vector3 lightDir, float fogDensity, Vector3
     SetU1(locLamps, 1.0f);
 }
 
+// Camera de la vue en cours (voir RenderInView)
+static Vector3 viewEye, viewDir = { 0, 0, 1 };
+
+void RenderSetView(Camera3D cam)
+{
+    viewEye = cam.position;
+    viewDir = Vector3Normalize(Vector3Subtract(cam.target, cam.position));
+}
+
+// Test grossier (cone de 160 degres autour du regard, plus large que l'ecran
+// meme en course avec le grand angle) : seul ce qui est nettement derriere la
+// camera est elimine. v.d < cos(80 deg)*|v| - rayon = hors du cone.
+bool RenderInView(Vector3 p, float radius)
+{
+    Vector3 v = Vector3Subtract(p, viewEye);
+    float d = Vector3Length(v);
+    if (d <= radius) return true;
+    return Vector3DotProduct(v, viewDir) >= 0.17f*d - radius;
+}
+
+float RenderViewDistance(Vector3 p) { return Vector3Distance(p, viewEye); }
+
 // Lampes de la nuit allumees ou non. La passe de l'arme les eteint : elle est
 // dessinee dans un repere vue ou les positions des lampes n'auraient pas de sens.
 void RenderSetLamps(bool on) { SetU1(locLamps, on ? 1.0f : 0.0f); }

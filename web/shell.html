@@ -38,18 +38,32 @@
 <canvas id="canvas" tabindex="-1"></canvas>
 <script>
   // ZNet : reseau du jeu dans le navigateur (utilise par src/netsock_web.c).
-  // Sur la page claude.ai du jeu, la capacite "room" relaie de petits messages
-  // entre les joueurs qui ont la page ouverte ; une partie = un salon nomme
-  // "zcb-<code>". Chaque paquet du jeu est compresse (deflate), coupe en
-  // morceaux de 2900 octets au plus (un message room = 4 Ko maximum) et
-  // envoye en base64. Comme en UDP, un paquet peut se perdre : le jeu s'en
-  // accommode deja. Ailleurs (pas de window.claude), available() reste faux.
+  // Sur la page claude.ai du jeu, la capacite "room" relie tous ceux qui ont
+  // la page ouverte, comme un serveur de jeu en ligne :
+  //  - salon commun (lobby) : chaque hote y publie sa "presence" { g: ... }
+  //    (code, joueurs, vague) ; tout le monde voit la liste des parties ;
+  //  - une partie = un salon nomme "zcb-<code>" ;
+  //  - client -> hote : le dernier paquet du client est sa presence { s: ... }
+  //    (le relais la transmet jusqu'a ~30 fois par seconde, et n'importe quel
+  //    joueur peut en publier une : pas besoin de droits particuliers) ;
+  //  - hote -> clients : messages sur le sujet "p" ; l'etat du monde est
+  //    diffuse en UN message pour tout le monde (t = "*"), le reste (accueil,
+  //    refus) est adresse a un seul joueur.
+  // Les paquets sont compresses (deflate) puis ecrits en base64 ; un message
+  // de plus de 2900 octets est coupe en morceaux (un message room = 4 Ko au
+  // plus). Comme en UDP, un paquet peut se perdre : le jeu s'en accommode.
+  // Ailleurs (pas de window.claude), available() reste faux.
   var ZNet = (function () {
-    var room = null, game = null, unsub = null, isHost = false, myLabel = null;
-    var queue = [], idxOf = {}, labelOf = {}, nextIdx = 2, pktId = 0, partial = {};
-    var FRAG = 2900;
+    var lobby = null, users = null, game = null, unsubs = [], session = 0, isHost = false, myLabel = null;
+    var queue = [], idxOf = {}, labelOf = {}, nextIdx = 2, pktId = 0, partial = {}, lastK = {}, lastPres = 0;
+    var announced = null, names = {}, asked = {};
+    var FRAG = 2900, PRESENCE_MAX = 3200;
+    var BYE = [0x42, 0x52, 0x53, 0x48, 6];   // paquet BYE du jeu (NET_MAGIC + PKT_BYE)
     var canZip = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
-    if (window.claude && claude.use) claude.use('room').then(function (r) { room = r; }).catch(function () {});
+    if (window.claude && claude.use) {
+      claude.use('room').then(function (r) { lobby = r; }).catch(function () {});
+      claude.use('user').then(function (u) { users = u; }).catch(function () {});
+    }
     function b64(bytes) {
       var s = '';
       for (var i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
@@ -63,23 +77,35 @@
     function pipe(bytes, stream) {
       return new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer().then(function (b) { return new Uint8Array(b); });
     }
+    // Compression des paquets de plus de 600 octets (les petits n'y gagnent rien)
+    function zip(bytes) {
+      if (!canZip || bytes.length <= 600) return Promise.resolve({ d: bytes, z: 0 });
+      return pipe(bytes, new CompressionStream('deflate-raw')).then(function (c) { return { d: c, z: 1 }; },
+                                                                     function () { return { d: bytes, z: 0 }; });
+    }
+    function unzip(bytes, z) { return z ? pipe(bytes, new DecompressionStream('deflate-raw')) : Promise.resolve(bytes); }
+    function push(from, bytes) { if (queue.length < 512) queue.push({ from: from, bytes: bytes }); }
+    // Hote : numero de joueur reseau d'un participant (2, 3... dans l'ordre d'arrivee)
+    function idx(peer) {
+      if (!idxOf[peer]) { idxOf[peer] = nextIdx; labelOf[nextIdx] = peer; nextIdx++; }
+      return idxOf[peer];
+    }
     function me() {
-      if (!myLabel && game) game.peers().forEach(function (p) { if (p.sameTab) myLabel = p.peer; });
+      if (!myLabel && lobby) lobby.peers().forEach(function (p) { if (p.sameTab) myLabel = p.peer; });
       return myLabel;
     }
+    // Message "p" recu : hote -> client(s), ou client -> hote quand le paquet
+    // etait trop gros pour la presence. Les morceaux sont rassembles par (expediteur, k).
     function onMsg(m) {
       var d = m.data;
-      if (m.sameTab || !d || typeof d.d !== 'string' || typeof d.n !== 'number' || d.n < 1 || d.n > 8) return;
-      if (isHost ? d.t !== 'h' : (!d.h || d.t !== me())) return;   // pas pour nous
-      var from = 1;                                                    // vu d'un client, l'hote = 1
-      if (isHost) {
-        if (!idxOf[m.peer]) { idxOf[m.peer] = nextIdx; labelOf[nextIdx] = m.peer; nextIdx++; }
-        from = idxOf[m.peer];
-      }
+      if (m.sameTab || !d || typeof d.d !== 'string' || typeof d.n !== 'number' || d.n < 1 || d.n > 8
+          || typeof d.f !== 'number' || d.f < 0 || d.f >= d.n) return;
+      if (isHost ? d.t !== 'h' : (!d.h || (d.t !== '*' && d.t !== me()))) return;   // pas pour nous
+      var from = isHost ? idx(m.peer) : 1;                                          // vu d'un client, l'hote = 1
       var key = m.peer + ':' + d.k, now = Date.now();
       var part = partial[key] || (partial[key] = { n: d.n, got: 0, chunks: [], t: now });
       if (part.chunks[d.f]) return;
-      part.chunks[d.f] = unb64(d.d);
+      try { part.chunks[d.f] = unb64(d.d); } catch (e) { delete partial[key]; return; }
       if (++part.got < part.n) return;
       delete partial[key];
       for (var k in partial) if (now - partial[k].t > 3000) delete partial[k];   // morceaux orphelins
@@ -87,39 +113,102 @@
       part.chunks.forEach(function (c) { total += c.length; });
       var all = new Uint8Array(total);
       part.chunks.forEach(function (c) { all.set(c, o); o += c.length; });
-      (d.z ? pipe(all, new DecompressionStream('deflate-raw')) : Promise.resolve(all)).then(function (bytes) {
-        if (queue.length < 256) queue.push({ from: from, bytes: bytes });
-      }).catch(function () {});
+      unzip(all, d.z).then(function (bytes) { push(from, bytes); }).catch(function () {});
     }
+    // Hote : presences des clients de la partie (le dernier paquet de chacun).
+    // Un joueur qui ferme la page part du salon : on transmet au jeu un BYE de sa part.
+    function onPeers(ch) {
+      if (!isHost) return;
+      ch.joined.concat(ch.updated).forEach(function (p) {
+        var s = p.presence && p.presence.s;
+        if (p.sameTab || !s || typeof s.d !== 'string' || s.k === lastK[p.peer]) return;
+        lastK[p.peer] = s.k;
+        var from = idx(p.peer), raw;
+        try { raw = unb64(s.d); } catch (e) { return; }
+        unzip(raw, s.z).then(function (bytes) { push(from, bytes); }).catch(function () {});
+      });
+      ch.left.forEach(function (p) { if (idxOf[p.peer]) push(idxOf[p.peer], new Uint8Array(BYE)); });
+    }
+    // Nom affiche pour une partie : "Partie de <prenom de l'hote>", sans accents
+    // (la police du jeu n'a que l'ASCII) ; les noms arrivent un peu apres.
+    function nameOf(p, code) {
+      var by = p.by;
+      if (users && by && !asked[by]) {
+        asked[by] = true;
+        users.profiles([by]).then(function (ps) { if (ps && ps[by] && ps[by].name) names[by] = ps[by].name; }).catch(function () {});
+      }
+      var n = (by && names[by]) || '';
+      n = n.split(' ')[0].normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7e]/g, '').replace(/\|/g, ' ').slice(0, 24);
+      return n ? 'Partie de ' + n : 'Partie ' + code;
+    }
+    function num(x) { x = x | 0; return x < 0 ? 0 : (x > 999 ? 999 : x); }
     return {
-      available: function () { return !!room; },
+      available: function () { return !!lobby; },
       open: function (code, host) {
         this.close();
-        isHost = host; myLabel = null; idxOf = {}; labelOf = {}; nextIdx = 2; queue = []; partial = {};
-        room.join('zcb-' + code).then(function (g) { game = g; unsub = g.on('p', onMsg); })
-          .catch(function (e) { console.log('ZNet : salon indisponible', e && e.code); });
+        isHost = host; myLabel = null; idxOf = {}; labelOf = {}; nextIdx = 2; queue = []; partial = {}; lastK = {}; lastPres = 0;
+        var token = session;
+        lobby.join('zcb-' + code).then(function (g) {
+          if (token !== session) return;           // partie quittee entre-temps
+          game = g;
+          unsubs.push(g.on('p', onMsg), g.onPeers(onPeers));
+        }).catch(function (e) { console.log('ZNet : salon indisponible', e && e.code); });
       },
       close: function () {
-        if (unsub) unsub();
+        session++;
+        unsubs.forEach(function (u) { u(); });
+        unsubs = [];
         if (game) game.leave().catch(function () {});
-        unsub = null; game = null;
+        game = null;
+        if (announced && lobby) lobby.presence({ g: null }).catch(function () {});
+        announced = null;
       },
+      // to : 0 = tous les clients (hote), sinon numero du destinataire
       send: function (to, bytes) {
-        var target = isHost ? labelOf[to] : 'h';
-        if (!game || !target) return false;
+        var g = game;
+        var target = isHost ? (to === 0 ? '*' : labelOf[to]) : 'h';
+        if (!g || !target) return false;
         var k = pktId = (pktId + 1) % 1000000000;
-        var go = function (data, z) {
-          var n = Math.max(1, Math.ceil(data.length / FRAG));
+        zip(bytes).then(function (r) {
+          if (g !== game) return;
+          if (!isHost) {
+            // Client : le paquet devient sa presence, s'il y tient (sinon message classique)
+            var str = b64(r.d);
+            if (str.length <= PRESENCE_MAX) {
+              if (k < lastPres) return;               // un paquet plus recent est deja parti
+              lastPres = k;
+              g.presence({ s: { k: k, z: r.z, d: str } }).catch(function () {});
+              return;
+            }
+          }
+          var n = Math.max(1, Math.ceil(r.d.length / FRAG));
           if (n > 8) return;
           for (var f = 0; f < n; f++)
-            game.emit('p', { t: target, h: isHost ? 1 : 0, k: k, f: f, n: n, z: z, d: b64(data.subarray(f * FRAG, (f + 1) * FRAG)) })
+            g.emit('p', { t: target, h: isHost ? 1 : 0, k: k, f: f, n: n, z: r.z, d: b64(r.d.subarray(f * FRAG, (f + 1) * FRAG)) })
               .catch(function () {});
-        };
-        if (canZip && bytes.length > 600) pipe(bytes, new CompressionStream('deflate-raw')).then(function (c) { go(c, 1); }, function () { go(bytes, 0); });
-        else go(bytes, 0);
+        });
         return true;
       },
-      recv: function () { return queue.shift() || null; }
+      recv: function () { return queue.shift() || null; },
+      // Hote : annonce de la partie dans le salon commun (envoyee seulement si elle change)
+      announce: function (info) {
+        if (!lobby || !game) return;
+        var str = JSON.stringify(info);
+        if (str === announced) return;
+        announced = str;
+        lobby.presence({ g: info }).catch(function () {});
+      },
+      // Parties annoncees par les autres : une ligne "code|joueurs|max|vague|lancee|nom" par partie
+      games: function () {
+        if (!lobby) return '';
+        var out = [];
+        lobby.peers().forEach(function (p) {
+          var g = p.presence && p.presence.g;
+          if (p.sameTab || !g || typeof g.c !== 'number' || g.c < 1000 || g.c > 9999) return;
+          out.push([g.c, num(g.n), num(g.m), num(g.w), g.p ? 1 : 0, nameOf(p, g.c)].join('|'));
+        });
+        return out.slice(0, 40).join('\n');
+      }
     };
   })();
 </script>

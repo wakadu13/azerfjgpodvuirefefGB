@@ -44,9 +44,25 @@ bool SockResolve(const char *host, unsigned short port, NetAddr *out);
 int SockLocalIPs(char out[][40], int max);         // adresses IPv4 de cette machine
 // Vrai si les deux adresses designent la meme machine ET le meme port.
 bool SockAddrEqual(NetAddr a, NetAddr b);
+// Envoie le meme paquet a n adresses (l'etat du monde, de l'hote vers tous les clients).
+// Navigateur : un seul message, diffuse a tous les joueurs de la partie.
+bool SockSendMany(const NetAddr *to, int n, const void *data, int len);
 #if defined(BR_WEB)
 // Navigateur : le reseau n'existe que sur la page claude.ai (capacite "room").
 bool SockAvailable(void);
+
+// Liste des parties ouvertes : chaque hote s'annonce dans le salon commun de la
+// page claude.ai (le "lobby"), comme sur un serveur de jeu en ligne.
+typedef struct {
+    int code;            // code a 4 chiffres a rejoindre
+    int players, maxPlayers, wave;
+    bool playing;        // partie lancee (sinon : salle d'attente)
+    char name[48];       // "Partie de <prenom>" (nom vu par CE joueur, sans accents)
+} SockGame;
+// Hote : met a jour son annonce (appele regulierement)
+void SockAnnounce(int players, int maxPlayers, int wave, bool playing);
+// Remplit out[] avec les parties annoncees (au plus max) ; renvoie leur nombre
+int SockListGames(SockGame *out, int max);
 #endif
 
 #endif

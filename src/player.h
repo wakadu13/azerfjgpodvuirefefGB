@@ -91,7 +91,7 @@ void PlayerRespawn(Player *p);                  // fait revenir un joueur mort
 void PlayerRefillWeapon(Player *p);             // recharge l'arme a un minimum garanti
 void PlayerGiveAmmo(Player *p, int amount);     // munitions HK416 en plus (ramassage)
 void PlayerGiveHarpoons(Player *p, int amount); // fleches de harpon en plus
-void PlayerDrawBody(const Player *p);           // modele 3D du soldat (vu par les autres)
+void PlayerDrawBody(const Player *p, bool far); // modele 3D du soldat (vu par les autres) ; far = simplifie
 
 // Requetes utilitaires
 Vector3 PlayerEye(const Player *p);       // position des yeux dans le monde

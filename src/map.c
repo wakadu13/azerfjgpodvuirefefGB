@@ -278,22 +278,95 @@ static void DrawTent(Vector3 c, Vector3 s, bool green)
     }
 }
 
-// Panneau "SORTIE" bleu a cote d'une porte : poteau + fleche (corps + pointe).
-// (x, z) : pied du poteau ; dir = +1/-1 sens de la fleche ; alongX : fleche dans l'axe X.
+// Lettres du mot SORTIE en "pixels" de 5 x 7 (comme une vieille police
+// d'ordinateur) : '#' = pixel allume. Le shader du jeu n'a pas de textures,
+// alors le texte est fait de petits rectangles blancs, assembles une seule
+// fois dans un mesh (un seul appel de dessin par panneau).
+static const char *SIGN_FONT[6][7] = {
+    { ".####", "#....", "#....", ".###.", "....#", "....#", "####." },   // S
+    { ".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###." },   // O
+    { "####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#" },   // R
+    { "#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.." },   // T
+    { ".###.", "..#..", "..#..", "..#..", "..#..", "..#..", ".###." },   // I
+    { "#####", "#....", "#....", "####.", "#....", "#....", "#####" },   // E
+};
+#define SIGN_PIXEL 0.046f   // taille d'un pixel de lettre (metres) : texte de 32 cm de haut
+#define SIGN_W     1.84f    // panneau bleu : 1,84 m x 0,54 m
+#define SIGN_H     0.54f
+#define SIGN_Y     1.75f    // hauteur du centre du panneau
+
+// Ajoute un rectangle (2 triangles) au mesh, dans le plan z = cste, vu de
+// face depuis +z (front) ou -z (dos : le texte est alors retourne en miroir
+// pour se lire a l'endroit depuis l'arriere).
+static void AddQuad(float *v, float *n, int *count, float x0, float y0, float x1, float y1, bool front)
+{
+    float z = front ? 0.026f : -0.026f, s = front ? 1.0f : -1.0f;
+    // Sommets dans l'ordre inverse des aiguilles d'une montre vu depuis +z ;
+    // le miroir en x (s = -1) inverse ce sens, ce qui les rend visibles depuis -z
+    float pts[6][2] = { { x0, y0 }, { x1, y0 }, { x1, y1 }, { x0, y0 }, { x1, y1 }, { x0, y1 } };
+    for (int i = 0; i < 6; i++)
+    {
+        int k = (*count)++;
+        v[k*3 + 0] = pts[i][0]*s; v[k*3 + 1] = pts[i][1]; v[k*3 + 2] = z;
+        n[k*3 + 0] = 0; n[k*3 + 1] = 0; n[k*3 + 2] = s;
+    }
+}
+
+// Construit le mesh du mot SORTIE, centre en (0, 0), sur les deux faces d'un
+// panneau dans le plan XY. Chaque suite de pixels allumes d'une meme ligne
+// devient un seul rectangle (moins de triangles).
+static Model BuildSignText(void)
+{
+    const int maxQuads = 6*7*3*2;   // au plus 3 suites par ligne, 2 faces
+    float *v = MemAlloc(maxQuads*6*3*sizeof(float)), *n = MemAlloc(maxQuads*6*3*sizeof(float));
+    int count = 0;
+    const float p = SIGN_PIXEL, width = (6*5 + 5)*p;   // 6 lettres de 5 pixels + 5 espaces
+    for (int face = 0; face < 2; face++)
+        for (int l = 0; l < 6; l++)
+            for (int r = 0; r < 7; r++)
+            {
+                const char *row = SIGN_FONT[l][r];
+                for (int c = 0; c < 5; c++)
+                {
+                    if (row[c] != '#' || (c > 0 && row[c - 1] == '#')) continue;   // debut d'une suite
+                    int e = c;
+                    while (e + 1 < 5 && row[e + 1] == '#') e++;
+                    float x0 = (l*6 + c)*p - width/2, x1 = (l*6 + e + 1)*p - width/2;
+                    float y1 = (3.5f - r)*p, y0 = y1 - p;
+                    AddQuad(v, n, &count, x0, y0, x1, y1, face == 0);
+                }
+            }
+    Mesh m = { 0 };
+    m.vertexCount = count;
+    m.triangleCount = count/3;
+    m.vertices = v;
+    m.normals = n;
+    return RenderLoadModel(m);
+}
+
+// Panneau SORTIE bleu sur un poteau, pres des portes. dir = sens de la fleche
+// (+1/-1) le long du panneau ; alongX = panneau parallele a l'axe X.
 static void DrawExitSign(float x, float z, float dir, bool alongX)
 {
+    static Model text;
+    static bool built;
+    if (!built) { text = BuildSignText(); built = true; }   // la 1re fois seulement
+
     Matrix I = MatrixIdentity();
     const Color blue = { 20, 80, 190, 255 }, white = { 240, 240, 240, 255 };
-    Seg(I, V3(x, 0, z), V3(x, 1.5f, z), 0.03f, blue);
-    Vector3 size = alongX ? V3(1.1f, 0.32f, 0.04f) : V3(0.04f, 0.32f, 1.1f);
-    Vector3 border = alongX ? V3(1.16f, 0.38f, 0.03f) : V3(0.03f, 0.38f, 1.16f);
-    Box3(I, V3(x, 1.6f, z), NOROT, border, white);
-    Box3(I, V3(x, 1.6f, z), NOROT, size, blue);
+    Seg(I, V3(x, 0, z), V3(x, SIGN_Y - 0.1f, z), 0.035f, blue);
+    Vector3 size = alongX ? V3(SIGN_W, SIGN_H, 0.04f) : V3(0.04f, SIGN_H, SIGN_W);
+    Vector3 border = alongX ? V3(SIGN_W + 0.07f, SIGN_H + 0.07f, 0.03f) : V3(0.03f, SIGN_H + 0.07f, SIGN_W + 0.07f);
+    Box3(I, V3(x, SIGN_Y, z), NOROT, border, white);
+    Box3(I, V3(x, SIGN_Y, z), NOROT, size, blue);
     // Pointe de la fleche : petit carre tourne de 45 degres au bout du panneau
-    if (alongX) Box3(I, V3(x + dir*0.6f, 1.6f, z), V3(0, 0, PI/4), V3(0.24f, 0.24f, 0.045f), blue);
-    else        Box3(I, V3(x, 1.6f, z + dir*0.6f), V3(PI/4, 0, 0), V3(0.045f, 0.24f, 0.24f), blue);
-    // Ecriture suggeree par une bande blanche (le texte serait illisible a cette taille)
-    Box3(I, V3(x, 1.6f, z), NOROT, alongX ? V3(0.7f, 0.06f, 0.05f) : V3(0.05f, 0.06f, 0.7f), white);
+    float tip = SIGN_W/2 + 0.08f;
+    if (alongX) Box3(I, V3(x + dir*tip, SIGN_Y, z), V3(0, 0, PI/4), V3(0.34f, 0.34f, 0.045f), blue);
+    else        Box3(I, V3(x, SIGN_Y, z + dir*tip), V3(PI/4, 0, 0), V3(0.045f, 0.34f, 0.34f), blue);
+    // Le mot SORTIE, lumineux pour rester lisible la nuit
+    RenderSetEmissive(true);
+    DrawPart(&text, TRS(V3(x, SIGN_Y, z), V3(0, alongX ? 0 : PI/2, 0), V3(1, 1, 1)), white);
+    RenderSetEmissive(false);
 }
 
 // Cypres derriere les murs : tronc + deux fuseaux vert sombre

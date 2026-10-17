@@ -21,7 +21,13 @@
 
 #include <math.h>
 
-#define MAX_ALIVE_AT_ONCE  40     // plafond de mercenaires vivants simultanement (lisibilite et performances)
+// Plafond de mercenaires vivants simultanement (lisibilite et performances) :
+// 40 en solo, +2 par joueur supplementaire, 120 au maximum (40 joueurs et plus)
+static int MaxAliveAtOnce(void)
+{
+    int n = 40 + 2*(PlayersConnected() - 1);
+    return n > 120 ? 120 : n;
+}
 #define INTERMISSION_TIME  8.0f   // duree de la pause entre deux vagues (secondes)
 
 // Taille d'une vague : 3 + 3 par numero de vague (vague 1 = 6, vague 5 = 18...).
@@ -96,13 +102,15 @@ void WavesUpdate(float dt)
     {
         G.spawnT -= dt;
         // On attend la fin du delai, et qu'il n'y ait pas deja trop d'ennemis
-        if (G.spawnT > 0 || G.alive >= MAX_ALIVE_AT_ONCE) return;
+        if (G.spawnT > 0 || G.alive >= MaxAliveAtOnce()) return;
         // Le boss arrive au milieu de sa vague
         if (G.bossPending && G.toSpawn <= WaveSize(G.wave)/2) { EnemySpawn(E_BOSS, G.wave); G.bossPending = false; }
         else if (G.toSpawn > 0) { EnemySpawn(PickType(G.wave), G.wave); G.toSpawn--; }
         // Delai avant le suivant : 2,2 s a la vague 0, -0,15 s par vague,
         // jamais moins de 0,35 s ; puis +/- aleatoire (x0,6 a x1,3) pour un rythme irregulier.
-        G.spawnT = fmaxf(0.35f, 2.2f - G.wave*0.15f)*Randf(0.6f, 1.3f);
+        // Divise par (1 + 0,25 par joueur en plus) : les grosses vagues des parties
+        // a 50 joueurs arrivent plus vite (environ 13 fois plus vite a 50).
+        G.spawnT = fmaxf(0.35f, 2.2f - G.wave*0.15f)*Randf(0.6f, 1.3f)/(1.0f + 0.25f*(PlayersConnected() - 1));
     }
     // 3. Tout est apparu et tout est mort : vague terminee
     else if (G.alive == 0)
