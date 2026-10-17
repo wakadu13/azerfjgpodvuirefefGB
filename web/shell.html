@@ -145,10 +145,21 @@
       if (t) document.getElementById('status').textContent = t.replace(/\(.*\)/, '');
     },
     onRuntimeInitialized: function () {
+      started = true;
       document.getElementById('loading').style.display = 'none';
       canvas.focus();
-    }
+    },
+    // Echec du chargement : on l'ecrit au lieu de rester sur "Chargement..."
+    onAbort: function (what) { showError('Le jeu n\'a pas pu demarrer (' + what + ').'); }
   };
+  var started = false;
+  function showError(msg) {
+    var st = document.getElementById('status');
+    st.style.color = '#ff7a6a';
+    st.textContent = msg + ' Essaie avec un navigateur recent (Chrome, Edge, Firefox, Safari).';
+  }
+  window.addEventListener('error', function (e) { if (!started) showError('Erreur : ' + (e.message || e)); });
+  setTimeout(function () { if (!started) showError('Le chargement est tres long.'); }, 45000);
 </script>
 {{{ SCRIPT }}}
 </body>
