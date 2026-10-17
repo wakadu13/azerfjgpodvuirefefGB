@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Application 100 % native (NativeActivity) : le jeu est la bibliotheque libmain.so -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="io.github.wakadu13.burgerrush"
+    package="io.github.wakadu13.zeffaliecomeback"
     android:versionCode="1"
     android:versionName="1.0">
 
@@ -14,7 +14,7 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
     <application
-        android:label="Burger Rush"
+        android:label="Zeffalie Come Back"
         android:icon="@drawable/icon"
         android:hasCode="false"
         android:extractNativeLibs="true"

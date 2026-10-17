@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(burger_rush C)
+project(zeffalie_come_back C)
 
 set(CMAKE_C_STANDARD 99)
 
@@ -18,13 +18,14 @@ if (NOT raylib_FOUND)
 endif()
 
 file(GLOB SOURCES src/*.c)
-add_executable(burger_rush ${SOURCES})
-target_link_libraries(burger_rush PRIVATE raylib)
+add_executable(zeffalie_come_back ${SOURCES})
+target_link_libraries(zeffalie_come_back PRIVATE raylib)
 
 if (UNIX AND NOT APPLE)
-    target_link_libraries(burger_rush PRIVATE m GL)
+    target_link_libraries(zeffalie_come_back PRIVATE m GL)
 elseif (WIN32)
-    target_link_libraries(burger_rush PRIVATE opengl32 ws2_32)
+    target_link_libraries(zeffalie_come_back PRIVATE opengl32 ws2_32)
+    target_sources(zeffalie_come_back PRIVATE assets/icon.rc)   # icone de l'exe
 elseif (APPLE)
-    target_link_libraries(burger_rush PRIVATE "-framework OpenGL")
+    target_link_libraries(zeffalie_come_back PRIVATE "-framework OpenGL")
 endif()

@@ -1,10 +1,12 @@
-# 🐥 BURGER RUSH : Opération HK416
+# 🐥 ZEFFALIE COME BACK : Opération HK416
 
 FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (écran partagé) ou **jusqu'à 4 en réseau**. Disponible pour **Windows**, **macOS (Apple Silicon)**, **Linux**, **Android** et **iOS**. Vous incarnez à la première personne un opérateur armé d'un **HK416** qui protège ses **poussins** contre des vagues de **mercenaires en treillis olive**, le visage peint en vert et les yeux cernés de noir, une **chaîne en métal** autour du cou, qui avancent comme des zombies, bras tendus, bien décidés à tous les enlever.
 
 ![Aperçu](docs/apercu.png)
 
-Tout est généré par le code (modèles 3D, sons, textures) : **aucun fichier externe**.
+Tout est généré par le code (modèles 3D, sons, textures), sauf l'enregistrement du « Kyrie des gueux » (`assets/kyrie_des_gueux.ogg`), intégré directement dans l'exécutable par `scripts/embed_music.py` : **aucun fichier externe à fournir**.
+
+**Ambiance** : la partie se joue **de nuit** (ciel étoilé, lune, lampadaires et lampe du stand qui éclairent l'arène). Les mercenaires lancent des « **On va croquer les poussins !** » (bulle au-dessus de la tête et voix grognée). En fond, le chant militaire **« Kyrie des gueux »** accompagné d'une **marche au tambour** générée par le code.
 
 ## 🎮 Le jeu
 
@@ -116,7 +118,7 @@ Avec deux manettes, la deuxième peut aussi contrôler le joueur 1.
 
 ### Windows
 
-**[`release/BurgerRush.exe`](release/BurgerRush.exe)** : autonome (aucune DLL à installer), double-cliquez dessus.
+**[`release/ZeffalieComeBack.exe`](release/ZeffalieComeBack.exe)** : autonome (aucune DLL à installer), double-cliquez dessus.
 
 > Windows SmartScreen peut afficher un avertissement car l'exe n'est pas signé : « Informations complémentaires » → « Exécuter quand même ».
 
@@ -124,26 +126,26 @@ Avec deux manettes, la deuxième peut aussi contrôler le joueur 1.
 
 L'application est compilée automatiquement sur un Mac par GitHub Actions :
 
-- après fusion sur `main` : **[page des releases → `BurgerRush-macOS-arm64.zip`](../../releases/latest)** ;
-- sinon : onglet **Actions** → dernier run « Build » → section *Artifacts* → `BurgerRush-macOS-arm64`.
+- après fusion sur `main` : **[page des releases → `ZeffalieComeBack-macOS-arm64.zip`](../../releases/latest)** ;
+- sinon : onglet **Actions** → dernier run « Build » → section *Artifacts* → `ZeffalieComeBack-macOS-arm64`.
 
-Dézippez puis lancez **BurgerRush.app**. L'application n'étant pas signée par un développeur Apple, macOS la bloque la première fois :
+Dézippez puis lancez **ZeffalieComeBack.app**. L'application n'étant pas signée par un développeur Apple, macOS la bloque la première fois :
 
-- **clic droit** sur `BurgerRush.app` → **Ouvrir** → **Ouvrir** ;
-- ou, si macOS dit qu'elle est « endommagée », dans le Terminal : `xattr -dr com.apple.quarantine ~/Downloads/BurgerRush.app`
+- **clic droit** sur `ZeffalieComeBack.app` → **Ouvrir** → **Ouvrir** ;
+- ou, si macOS dit qu'elle est « endommagée », dans le Terminal : `xattr -dr com.apple.quarantine ~/Downloads/ZeffalieComeBack.app`
 
 ### Linux
 
-Même endroit que pour macOS : `BurgerRush-linux-x64.tar.gz` (ou compilez, voir plus bas).
+Même endroit que pour macOS : `ZeffalieComeBack-linux-x64.tar.gz` (ou compilez, voir plus bas).
 
 ### Android
 
-`BurgerRush-android.apk`, sur la [page des releases](../../releases/latest) (ou *Artifacts* du dernier run « Build »).
+`ZeffalieComeBack-android.apk`, sur la [page des releases](../../releases/latest) (ou *Artifacts* du dernier run « Build »).
 Ouvrez-le sur le téléphone et autorisez l'installation d'applications de source inconnue quand Android le demande.
 
 ### iOS (iPhone / iPad)
 
-`BurgerRush-iOS.ipa`, même endroit. Apple n'autorise pas l'installation directe d'une app non signée :
+`ZeffalieComeBack-iOS.ipa`, même endroit. Apple n'autorise pas l'installation directe d'une app non signée :
 installez-la avec **[Sideloadly](https://sideloadly.io)** ou **[AltStore](https://altstore.io)** (gratuits, avec votre identifiant Apple).
 Elle doit alors être réinstallée tous les 7 jours (limite Apple pour les comptes gratuits).
 
@@ -194,14 +196,14 @@ Nécessite **raylib 5.5**.
 ```bash
 cmake -B build
 cmake --build build
-./build/burger_rush
+./build/zeffalie_come_back
 ```
 
 ### Avec make (raylib déjà installée)
 
 ```bash
 make
-./burger_rush
+./zeffalie_come_back
 ```
 
 Si raylib est compilée depuis les sources dans un dossier :
@@ -220,7 +222,7 @@ make windows RAYLIB_WIN_PATH=/chemin/vers/raylib-windows
 
 - **Android** : `scripts/build_android.sh` (NDK + SDK Android, sans Gradle).
 - **iOS** (sur un Mac avec Xcode) : `scripts/build_ios.sh device` ou `simulator`. raylib n'ayant pas de version iOS officielle, le jeu utilise son backend **SDL2**.
-- Pour tester l'interface tactile sur PC : `BR_TOUCH=1 ./burger_rush` (la souris joue le rôle du doigt).
+- Pour tester l'interface tactile sur PC : `BR_TOUCH=1 ./zeffalie_come_back` (la souris joue le rôle du doigt).
 
 Le workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) compile automatiquement les 5 versions à chaque pull request. Il lance aussi le jeu dans un émulateur Android et un simulateur iOS, dont les captures sont publiées sur la branche `ci-captures`.
 

@@ -1,0 +1,3 @@
+// Ressource Windows : icone de l'executable. Le nom GLFW_ICON est celui que
+// GLFW (utilise par raylib) cherche pour l'icone de la fenetre.
+GLFW_ICON ICON "icon.ico"
