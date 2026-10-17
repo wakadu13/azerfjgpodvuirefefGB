@@ -8,6 +8,7 @@
 #include "rlgl.h"
 
 #include <math.h>
+#include <stdio.h>
 
 // glClear vient directement de la lib OpenGL (deja liee par raylib) : on
 // s'en sert pour vider le depth buffer avant de dessiner l'arme, afin
@@ -29,25 +30,33 @@ static Vector3 sunDir;
 static int locViewPos, locLightDir, locFogColor, locFogDensity, locFlashPos, locFlashPower;
 static int locEmissive, locChecker, locArena;
 
-static const char *VS_CODE =
-    "#version 330\n"
-    "in vec3 vertexPosition;\n"
-    "in vec3 vertexNormal;\n"
+// Les shaders sont ecrits une fois, avec un en-tete different selon l'API :
+// OpenGL 3.3 (PC / Mac) ou OpenGL ES 2.0 (Android / iOS).
+static const char *VS_HEADER_GL33 = "#version 330\n#define ATTR in\n#define VARY out\n";
+static const char *VS_HEADER_ES2 = "#version 100\n#define ATTR attribute\n#define VARY varying\n";
+static const char *FS_HEADER_GL33 = "#version 330\n#define VARY in\nout vec4 fragOut;\n#define FRAG_OUT fragOut\n";
+static const char *FS_HEADER_ES2 =
+    "#version 100\n"
+    "#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n"
+    "#define VARY varying\n#define FRAG_OUT gl_FragColor\n";
+
+static const char *VS_BODY =
+    "ATTR vec3 vertexPosition;\n"
+    "ATTR vec3 vertexNormal;\n"
     "uniform mat4 mvp;\n"
     "uniform mat4 matModel;\n"
     "uniform mat4 matNormal;\n"
-    "out vec3 fragPosition;\n"
-    "out vec3 fragNormal;\n"
+    "VARY vec3 fragPosition;\n"
+    "VARY vec3 fragNormal;\n"
     "void main() {\n"
     "    fragPosition = vec3(matModel*vec4(vertexPosition, 1.0));\n"
     "    fragNormal = normalize(vec3(matNormal*vec4(vertexNormal, 0.0)));\n"
     "    gl_Position = mvp*vec4(vertexPosition, 1.0);\n"
     "}\n";
 
-static const char *FS_CODE =
-    "#version 330\n"
-    "in vec3 fragPosition;\n"
-    "in vec3 fragNormal;\n"
+static const char *FS_BODY =
+    "VARY vec3 fragPosition;\n"
+    "VARY vec3 fragNormal;\n"
     "uniform vec4 colDiffuse;\n"
     "uniform vec3 viewPos;\n"
     "uniform vec3 lightDir;\n"
@@ -58,7 +67,6 @@ static const char *FS_CODE =
     "uniform float emissive;\n"
     "uniform float checker;\n"
     "uniform float arena;\n"
-    "out vec4 finalColor;\n"
     "void main() {\n"
     "    vec3 base = colDiffuse.rgb;\n"
     "    if (checker > 0.5) {\n"
@@ -89,7 +97,7 @@ static const char *FS_CODE =
     "    float dist = length(viewPos - fragPosition);\n"
     "    float fog = 1.0 - exp(-pow(dist*fogDensity, 2.0));\n"
     "    col = mix(col, fogColor.rgb, clamp(fog, 0.0, 1.0));\n"
-    "    finalColor = vec4(col, colDiffuse.a);\n"
+    "    FRAG_OUT = vec4(col, colDiffuse.a);\n"
     "}\n";
 
 static void SetU1(int loc, float v) { SetShaderValue(shader, loc, &v, SHADER_UNIFORM_FLOAT); }
@@ -97,7 +105,11 @@ static void SetU3(int loc, Vector3 v) { SetShaderValue(shader, loc, &v, SHADER_U
 
 void RenderInit(void)
 {
-    shader = LoadShaderFromMemory(VS_CODE, FS_CODE);
+    bool es = (rlGetVersion() == RL_OPENGL_ES_20 || rlGetVersion() == RL_OPENGL_ES_30);
+    static char vs[4096], fs[8192];
+    snprintf(vs, sizeof(vs), "%s%s", es ? VS_HEADER_ES2 : VS_HEADER_GL33, VS_BODY);
+    snprintf(fs, sizeof(fs), "%s%s", es ? FS_HEADER_ES2 : FS_HEADER_GL33, FS_BODY);
+    shader = LoadShaderFromMemory(vs, fs);
     locViewPos = GetShaderLocation(shader, "viewPos");
     locLightDir = GetShaderLocation(shader, "lightDir");
     locFogColor = GetShaderLocation(shader, "fogColor");

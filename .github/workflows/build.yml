@@ -1,6 +1,8 @@
 name: Build
 
-# Compile le jeu pour macOS (Apple Silicon), Windows et Linux.
+# Compile le jeu pour macOS (Apple Silicon), Windows, Linux, Android et iOS,
+# puis le lance dans un emulateur Android et un simulateur iOS (captures
+# d'ecran publiees sur la branche "ci-captures").
 # - Sur chaque pull request : les executables sont disponibles dans l'onglet
 #   Actions (section "Artifacts" du run).
 # - Sur chaque push sur main : ils sont publies dans la release "latest".
@@ -82,14 +84,120 @@ jobs:
           name: BurgerRush-linux-x64
           path: dist/BurgerRush-linux-x64.tar.gz
 
-  release:
-    name: Publier la release "latest"
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [macos-arm64, windows, linux]
+  android:
+    name: Android (APK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sources raylib 5.5
+        run: git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git raylib-src
+
+      - name: Compiler l'APK
+        run: |
+          export ANDROID_NDK="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
+          RAYLIB_SRC="$PWD/raylib-src" OUT=build-android bash scripts/build_android.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BurgerRush-android
+          path: build-android/BurgerRush-android.apk
+
+  android-test:
+    name: Android (test sur emulateur)
+    needs: android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: BurgerRush-android
+
+      - name: Activer KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Lancer le jeu dans l'emulateur
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          profile: pixel_5
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash scripts/android_smoke_test.sh BurgerRush-android.apk captures
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: captures-android
+          path: captures
+
+  ios:
+    name: iOS (iPhone / iPad)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sources raylib 5.5 et SDL 2.30
+        run: |
+          git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git raylib-src
+          git clone --depth 1 --branch release-2.30.8 https://github.com/libsdl-org/SDL.git sdl-src
+
+      - name: Compiler pour iPhone (.ipa) et pour le simulateur
+        run: |
+          export RAYLIB_SRC="$PWD/raylib-src" SDL_SRC="$PWD/sdl-src"
+          bash scripts/build_ios.sh device
+          bash scripts/build_ios.sh simulator
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BurgerRush-iOS
+          path: build-ios-device/BurgerRush-iOS.ipa
+
+      - name: Lancer le jeu dans le simulateur iOS
+        run: bash scripts/ios_smoke_test.sh build-ios-simulator/BurgerRush.app captures
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: captures-ios
+          path: captures
+
+  captures:
+    name: Publier les captures (branche ci-captures)
+    needs: [android-test, ios]
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: captures-*
+          path: captures
+          merge-multiple: true
+
+      - name: Pousser sur la branche ci-captures
+        run: |
+          mkdir -p captures && cd captures
+          echo "Captures du run ${{ github.run_id }} (commit ${{ github.sha }})" > README.md
+          git init -q && git checkout -q -b ci-captures
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A && git commit -q -m "Captures CI ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-captures
+
+  release:
+    name: Publier la release "latest"
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [macos-arm64, windows, linux, android, ios]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: BurgerRush-*
           path: dist
           merge-multiple: true
 
@@ -101,4 +209,4 @@ jobs:
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest dist/* --target "${{ github.sha }}" \
             --title "BURGER RUSH - derniere version" \
-            --notes "Executables compiles automatiquement depuis main : macOS Apple Silicon (.zip contenant BurgerRush.app), Windows (.exe), Linux (.tar.gz)."
+            --notes "Executables compiles automatiquement depuis main : Windows (.exe), macOS Apple Silicon (.zip contenant BurgerRush.app), Linux (.tar.gz), Android (.apk) et iOS (.ipa non signee, a installer avec Sideloadly ou AltStore)."

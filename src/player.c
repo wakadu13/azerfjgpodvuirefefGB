@@ -13,6 +13,8 @@
 #include "game.h"
 #include "net.h"
 #include "render.h"
+#include "touch.h"
+#include "ui.h"
 #include "util.h"
 
 #include "raymath.h"
@@ -283,7 +285,12 @@ void PlayersReadInput(float dt)
         *in = (PlayerInput){ 0 };
         in->selectWeapon = -1;
 
-        if (G.mode != MODE_SPLIT)
+        if (TouchMode() && G.mode != MODE_SPLIT)
+        {
+            TouchApplyInput(in);
+            ReadGamepad(in, 0, dt);
+        }
+        else if (G.mode != MODE_SPLIT)
         {
             ReadKeyboardMouse(in, true);
             ReadGamepad(in, 0, dt);
