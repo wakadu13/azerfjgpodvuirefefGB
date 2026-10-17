@@ -470,11 +470,12 @@ int HudTitleChoices(TitleChoice *out)
     int n = 0;
     out[n++] = TITLE_SOLO;
     if (!TouchMode()) out[n++] = TITLE_SPLIT;   // pas d'ecran partage sur telephone
-#if !defined(BR_WEB)
-    // Pas de reseau dans le navigateur : il n'autorise pas les sockets UDP
-    out[n++] = TITLE_HOST;
-    out[n++] = TITLE_JOIN;
-#endif
+    // Reseau : partout sauf dans un navigateur hors claude.ai (pas d'UDP ni de relais)
+    if (NetSupported())
+    {
+        out[n++] = TITLE_HOST;
+        out[n++] = TITLE_JOIN;
+    }
     return n;
 }
 
@@ -604,7 +605,11 @@ void HudDrawJoin(int w, int h, const char *address)
     int cx = w/2;
     DrawRectangle(0, 0, w, h, (Color){ 0, 0, 0, 150 });
     TextCenter("REJOINDRE UNE PARTIE", cx, (int)(h*0.04f), 44, (Color){ 255, 200, 60, 255 });
+#if defined(BR_WEB)
+    TextCenter("Code de la partie (affiche sur l'ecran de l'hote) :", cx, (int)(h*0.13f), 20, LIGHTGRAY);
+#else
     TextCenter("Adresse IP de l'hote (affichee sur son ecran) :", cx, (int)(h*0.13f), 20, LIGHTGRAY);
+#endif
 
     // Champ de saisie
     int bw = 380;
@@ -626,7 +631,11 @@ void HudDrawJoin(int w, int h, const char *address)
     if (NetGetRole() == NET_CLIENT && st == NET_CONNECTING) TextCenter("Connexion en cours...", cx, sy, 20, (Color){ 255, 220, 120, 255 });
     else if (NetGetRole() == NET_CLIENT && st == NET_CONNECTED) TextCenter("Connecte ! En attente de l'hote...", cx, sy, 20, GREEN);
     else if (NetError()[0]) TextCenter(NetError(), cx, sy, 20, (Color){ 255, 100, 80, 255 });
+#if defined(BR_WEB)
+    TextCenter("Chaque joueur ouvre la meme page du jeu sur claude.ai (acces \"Contributeur\").", cx, h - 24, 16, GRAY);
+#else
     TextCenter("Meme reseau Wi-Fi que l'hote (ou port UDP 27016 ouvert chez lui).", cx, h - 24, 16, GRAY);
+#endif
 }
 
 // Salle d'attente reseau. L'hote voit ses adresses IP (a communiquer aux
@@ -649,7 +658,11 @@ void HudDrawLobby(int w, int h)
         if (n == 0) TextCenter("(adresse IP introuvable)", cx, y + 98, 26, GRAY);
         // Descend d'autant de lignes que d'adresses affichees (1 ligne si aucune)
         y += 98 + (n > 0 ? (n < 2 ? n : 2) : 1)*34;
+#if defined(BR_WEB)
+        snprintf(buf, sizeof(buf), "(code de la partie, sur la page claude.ai du jeu)");
+#else
         snprintf(buf, sizeof(buf), "(port UDP %d)", NET_PORT);
+#endif
         TextCenter(buf, cx, y, 16, GRAY);
         y += 28;
     }

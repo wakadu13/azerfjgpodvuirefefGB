@@ -37,7 +37,7 @@ const Color SKY_HORIZON = { 22, 30, 50, 255 };
 // poussins) et une sur chacun des 4 lampadaires des coins (voir map.c).
 #define LAMP_COUNT 5
 static const Vector3 LAMPS[LAMP_COUNT] = {
-    { 0, 2.85f, 0 }, { 26, 5.8f, 26 }, { -26, 5.8f, 26 }, { 26, 5.8f, -26 }, { -26, 5.8f, -26 }
+    { 0, 2.85f, 0 }, { 26, 7.8f, 26 }, { -26, 7.8f, 26 }, { 26, 7.8f, -26 }, { -26, 7.8f, -26 }
 };
 
 // Les trois meshes de base (cube 1x1x1, sphere de rayon 1, cylindre rayon 1 hauteur 1)
@@ -155,21 +155,57 @@ static const char *FS_BODY =
     "    float d = mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), f.x);\n"
     "    return mix(mix(a, b, f.y), mix(c, d, f.y), f.z);\n"               // ... puis sur y, puis sur z
     "}\n"
+    // Cellules de Voronoi : chaque cellule a un point place au hasard ; on
+    // renvoie (distance au 2e point - distance au 1er point, hasard de la
+    // cellule). Petit ecart = bord entre deux pierres -> joints irreguliers.
+    "vec2 hash2(vec2 c) { return fract(sin(vec2(dot(c, vec2(127.1, 311.7)), dot(c, vec2(269.5, 183.3))))*43758.5453); }\n"
+    "vec2 stones(vec2 x) {\n"
+    "    vec2 n = floor(x);\n"
+    "    float d1 = 8.0, d2 = 8.0, id = 0.0;\n"
+    "    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {\n"
+    "        vec2 g = n + vec2(float(i), float(j));\n"
+    "        vec2 h = hash2(g);\n"
+    "        float d = length(g + h - x);\n"
+    "        if (d < d1) { d2 = d1; d1 = d; id = h.x; } else if (d < d2) d2 = d;\n"
+    "    }\n"
+    "    return vec2(d2 - d1, id);\n"
+    "}\n"
     "float camoField(vec3 p) { return custom_noise3(p*2.6)*0.65 + custom_noise3(p*5.5 + 3.7)*0.35; }\n"
     "void main() {\n"
     "    vec3 base = colDiffuse.rgb;\n"
-    "    if (checker > 0.5) {\n"
+    // Sol (checker = 1) : gravier sombre dans l'arene (cailloux de ~9 cm de
+    // teintes variees, quelques-uns plus clairs, zones plus ou moins
+    // tassees), herbe au-dela des murs.
+    "    if (checker > 0.5 && checker < 1.5) {\n"
     "        vec2 p = fragPosition.xz;\n"   // le sol est le plan horizontal XZ
-    "        if (abs(p.x) > arena || abs(p.y) > arena) {\n"
+    "        if (abs(p.x) > arena + 1.0 || abs(p.y) > arena + 1.0) {\n"
     "            float g = fract(sin(dot(floor(p*2.0), vec2(12.9898, 78.233)))*43758.5453);\n"
-    "            base = vec3(0.30, 0.52, 0.22)*(0.85 + 0.25*g);\n"   // vert herbe, +/- clair
+    "            base = vec3(0.26, 0.40, 0.18)*(0.85 + 0.25*g);\n"   // vert herbe, +/- clair
     "        } else {\n"
-    "            float c = mod(floor(p.x*0.5) + floor(p.y*0.5), 2.0);\n"   // 0 ou 1 : damier
-    "            vec2 f = abs(fract(p*0.5) - 0.5);\n"                        // distance au centre de la dalle
-    "            float grout = step(0.47, max(f.x, f.y));\n"                 // 1 sur les joints
-    "            base *= mix(0.86, 1.0, c);\n"
-    "            base = mix(base, base*0.6, grout);\n"
+    // Au-dela de 22 m : teinte moyenne (pas de scintillement, et le calcul
+    // des cailloux, le plus couteux du shader, n'est fait que pres du joueur)
+    "            float detail = clamp(1.0 - length(viewPos - fragPosition)/22.0, 0.0, 1.0);\n"
+    "            float tone = 0.21;\n"
+    "            if (detail > 0.0) {\n"
+    "                vec2 st = stones(p*10.0);\n"                             // ~10 cailloux par metre
+    "                float h = fract(st.y*7.13);\n"
+    "                float t = (0.15 + 0.2*st.y + (h > 0.9 ? 0.3 : 0.0))*mix(0.45, 1.0, smoothstep(0.02, 0.12, st.x));\n"
+    "                tone = mix(0.21, t, detail);\n"
+    "            }\n"
+    "            base = vec3(tone, tone, tone*1.04);\n"
+    "            base *= 0.8 + 0.4*camoField(vec3(p*0.12, 0.0));\n"          // zones plus ou moins sombres
     "        }\n"
+    "    }\n"
+    // Mur en gabions (checker = 2) : cages de grillage remplies de pierres
+    // grises. Pierres en quinconce (rangees decalees d'une demi-pierre),
+    // joints sombres entre elles, fils du grillage tous les 50 cm.
+    "    if (checker > 1.5) {\n"
+    "        vec3 wp = fragPosition;\n"
+    "        vec2 st = stones(vec2(wp.x + wp.z, wp.y)*vec2(3.6, 4.4));\n"
+    "        float tone = 0.38 + 0.32*st.y;\n"
+    "        base = vec3(tone, tone*0.99, tone*0.95)*mix(0.25, 1.0, smoothstep(0.03, 0.16, st.x));\n"
+    "        vec2 w = abs(fract(vec2(wp.x + wp.z, wp.y)*2.0) - 0.5);\n"
+    "        if (max(w.x, w.y) > 0.475) base = vec3(0.55, 0.56, 0.58);\n"    // fil de fer galvanise
     "    }\n"
     "    if (camo > 0.5) {\n"
     "        float n = camoField(camoPos);\n"
@@ -185,14 +221,14 @@ static const char *FS_BODY =
     "        float diff = max(dot(n, -lightDir), 0.0);\n"
     "        float sky = 0.5 + 0.5*n.y;\n"
     // Nuit : ambiance faible + clair de lune bleute
-    "        col = base*(0.10 + 0.12*sky*vec3(0.55, 0.65, 1.0) + 0.38*diff*vec3(0.65, 0.75, 1.0));\n"
+    "        col = base*(0.14 + 0.14*sky*vec3(0.55, 0.65, 1.0) + 0.42*diff*vec3(0.65, 0.75, 1.0));\n"
     // Lampes : lumiere jaune orangee qui decroit avec la distance au carre
     // (la premiere, celle du stand, est un peu moins forte)
     "        if (lamps > 0.5) {\n"
     "            for (int i = 0; i < 5; i++) {\n"
     "                vec3 ld = lampPos[i] - fragPosition;\n"
     "                float d = length(ld);\n"
-    "                float power = (i == 0) ? 2.4 : 5.0;\n"
+    "                float power = (i == 0) ? 2.4 : 7.0;\n"
     "                float la = max(dot(n, ld/max(d, 0.001)), 0.0)*power/(1.0 + d*d*0.12);\n"
     "                col += base*vec3(1.0, 0.82, 0.55)*la;\n"
     "            }\n"
@@ -318,7 +354,7 @@ void RenderSetLamps(bool on) { SetU1(locLamps, on ? 1.0f : 0.0f); }
 // Interrupteurs d'effets : ils restent actifs pour tous les dessins suivants
 // jusqu'a ce qu'on les desactive.
 void RenderSetEmissive(bool on) { SetU1(locEmissive, on ? 1.0f : 0.0f); }
-void RenderSetChecker(bool on) { SetU1(locChecker, on ? 1.0f : 0.0f); }
+void RenderSetSurface(Surface s) { SetU1(locChecker, (float)s); }
 
 // Couleur 0..255 -> vecteur RVB 0..1 (sans alpha)
 static Vector3 ColorRGB(Color c) { return V3(c.r/255.0f, c.g/255.0f, c.b/255.0f); }

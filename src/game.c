@@ -38,7 +38,11 @@ Game G;   // l'etat global de la partie (declare extern dans game.h)
 static Camera3D titleCam;                // camera qui tourne autour du stand derriere les menus
 static RenderTexture2D views[2];         // ecran partage : une image hors ecran par joueur
 static int viewW, viewH;                 // taille actuelle de ces images (pour les recreer si la fenetre change)
+#if defined(BR_WEB)
+static char joinAddress[64] = "";             // code de la partie saisi a l'ecran REJOINDRE (navigateur)
+#else
 static char joinAddress[64] = "192.168.1.";   // adresse saisie a l'ecran REJOINDRE (pre-remplie : reseau local typique)
+#endif
 static bool netMenu;   // menu ouvert en reseau (la partie continue)
 
 // Souris capturee pour viser (sans objet sur ecran tactile)
@@ -227,10 +231,10 @@ static void UpdateTitle(void)
     if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ONE) || IsKeyPressed(KEY_KP_1) ||
         AnyGamepadPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN)) ChooseTitle(TITLE_SOLO);
     else if (!TouchMode() && (IsKeyPressed(KEY_TWO) || IsKeyPressed(KEY_KP_2) || AnyGamepadPressed(GAMEPAD_BUTTON_MIDDLE_RIGHT))) ChooseTitle(TITLE_SPLIT);
+    else if (NetSupported() && (IsKeyPressed(KEY_THREE) || IsKeyPressed(KEY_KP_3))) ChooseTitle(TITLE_HOST);
+    else if (NetSupported() && (IsKeyPressed(KEY_FOUR) || IsKeyPressed(KEY_KP_4))) ChooseTitle(TITLE_JOIN);
 #if !defined(BR_WEB)
-    // (dans le navigateur : ni reseau, ni "quitter" ; on ferme simplement l'onglet)
-    else if (IsKeyPressed(KEY_THREE) || IsKeyPressed(KEY_KP_3)) ChooseTitle(TITLE_HOST);
-    else if (IsKeyPressed(KEY_FOUR) || IsKeyPressed(KEY_KP_4)) ChooseTitle(TITLE_JOIN);
+    // (dans le navigateur, pas de "quitter" : on ferme simplement l'onglet)
     else if (IsKeyPressed(KEY_ESCAPE)) G.quit = true;
 #endif
 }

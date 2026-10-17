@@ -1,5 +1,6 @@
 /*
- * map.h - Arene : murs, caisses, stand des poussins et collisions.
+ * map.h - Arene (camp militaire) : murs en gabions, tentes, sacs de sable,
+ * caisses, stand des poussins et collisions.
  *
  * Toute la geometrie solide de la carte est faite de boites alignees sur les
  * axes (AABB : "axis aligned bounding box"), posees sur le sol (y = 0).
@@ -12,8 +13,9 @@
 #include "raylib.h"
 
 // Apparence d'une boite (la collision est la meme pour tous les styles) :
-// caisse en bois, bloc de beton, mur d'enceinte, comptoir du stand.
-typedef enum { BX_CRATE, BX_CONCRETE, BX_WALL, BX_COUNTER } BoxStyle;
+// caisse militaire, muret de sacs de sable, mur en gabions, comptoir du
+// stand, grande tente beige a armature noire, tente vert olive.
+typedef enum { BX_CRATE, BX_SANDBAGS, BX_WALL, BX_COUNTER, BX_TENT, BX_TENT_GREEN } BoxStyle;
 
 typedef struct {
     BoundingBox b;     // coins min et max de la boite, en metres

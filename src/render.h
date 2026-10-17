@@ -28,7 +28,9 @@ Vector3 RenderSunDir(void);   // direction (normalisee) dans laquelle voyage la 
 // eclair du canon (point lumineux temporaire).
 void RenderSetFrame(Vector3 viewPos, Vector3 lightDir, float fogDensity, Vector3 flashPos, float flashPower);
 void RenderSetEmissive(bool on);   // couleur pleine, sans eclairage
-void RenderSetChecker(bool on);    // motif carrelage / herbe (sol)
+// Motif calcule par le shader pour les pieces suivantes
+typedef enum { SURF_PLAIN, SURF_GROUND, SURF_GABION } Surface;   // uni, gravier/herbe, gabions
+void RenderSetSurface(Surface s);
 void RenderSetLamps(bool on);      // lampes de la nuit (eteintes pour la passe de l'arme)
 void RenderClearDepth(void);       // vide le depth buffer (passe de l'arme)
 // Taches sur le tissu (usure, boue du treillis) pour les pieces suivantes :

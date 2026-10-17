@@ -272,6 +272,17 @@ static void ResetState(void)
 
 // Devient hote : ouvre le port fixe NET_PORT pour que les clients puissent nous joindre.
 // L'hote est immediatement "connecte" et occupe l'emplacement de joueur 0.
+// Le reseau est-il possible ici ? Toujours sur PC / mobile ; dans le
+// navigateur, seulement sur la page claude.ai (relais "room", netsock_web.c).
+bool NetSupported(void)
+{
+#if defined(BR_WEB)
+    return SockAvailable();
+#else
+    return true;
+#endif
+}
+
 bool NetHost(void)
 {
     NetStop();
@@ -304,7 +315,11 @@ bool NetJoin(const char *address)
     if (colon) { *colon = '\0'; port = (unsigned short)atoi(colon + 1); }
     if (!host[0] || !SockResolve(host, port, &hostAddr))
     {
+#if defined(BR_WEB)
+        snprintf(error, sizeof(error), "Code invalide : %s (4 chiffres)", address);
+#else
         snprintf(error, sizeof(error), "Adresse invalide : %s", address);
+#endif
         status = NET_FAILED;
         return false;
     }

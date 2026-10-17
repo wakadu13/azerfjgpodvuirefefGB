@@ -42,6 +42,7 @@ typedef enum { EV_TRACER = 1, EV_IMPACT, EV_SPARKS, EV_FEATHERS, EV_SOUND, EV_HA
 // Nature d'une touche signalee par un client : balle de fusil ou harpon
 typedef enum { HIT_BULLET, HIT_HARPOON } NetHitKind;
 
+bool NetSupported(void);              // reseau possible ici (navigateur : seulement sur claude.ai)
 bool NetHost(void);                    // ouvre le port NET_PORT
 bool NetJoin(const char *address);     // "ip" ou "ip:port"
 void NetStop(void);                    // previent les autres et ferme

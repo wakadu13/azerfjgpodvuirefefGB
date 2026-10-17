@@ -44,5 +44,9 @@ bool SockResolve(const char *host, unsigned short port, NetAddr *out);
 int SockLocalIPs(char out[][40], int max);         // adresses IPv4 de cette machine
 // Vrai si les deux adresses designent la meme machine ET le meme port.
 bool SockAddrEqual(NetAddr a, NetAddr b);
+#if defined(BR_WEB)
+// Navigateur : le reseau n'existe que sur la page claude.ai (capacite "room").
+bool SockAvailable(void);
+#endif
 
 #endif

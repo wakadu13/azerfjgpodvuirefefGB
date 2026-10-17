@@ -37,6 +37,93 @@
 <div id="rotate">Tourne ton telephone en mode paysage pour jouer 🔄</div>
 <canvas id="canvas" tabindex="-1"></canvas>
 <script>
+  // ZNet : reseau du jeu dans le navigateur (utilise par src/netsock_web.c).
+  // Sur la page claude.ai du jeu, la capacite "room" relaie de petits messages
+  // entre les joueurs qui ont la page ouverte ; une partie = un salon nomme
+  // "zcb-<code>". Chaque paquet du jeu est compresse (deflate), coupe en
+  // morceaux de 2900 octets au plus (un message room = 4 Ko maximum) et
+  // envoye en base64. Comme en UDP, un paquet peut se perdre : le jeu s'en
+  // accommode deja. Ailleurs (pas de window.claude), available() reste faux.
+  var ZNet = (function () {
+    var room = null, game = null, unsub = null, isHost = false, myLabel = null;
+    var queue = [], idxOf = {}, labelOf = {}, nextIdx = 2, pktId = 0, partial = {};
+    var FRAG = 2900;
+    var canZip = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
+    if (window.claude && claude.use) claude.use('room').then(function (r) { room = r; }).catch(function () {});
+    function b64(bytes) {
+      var s = '';
+      for (var i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      return btoa(s);
+    }
+    function unb64(str) {
+      var s = atob(str), a = new Uint8Array(s.length);
+      for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i);
+      return a;
+    }
+    function pipe(bytes, stream) {
+      return new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer().then(function (b) { return new Uint8Array(b); });
+    }
+    function me() {
+      if (!myLabel && game) game.peers().forEach(function (p) { if (p.sameTab) myLabel = p.peer; });
+      return myLabel;
+    }
+    function onMsg(m) {
+      var d = m.data;
+      if (m.sameTab || !d || typeof d.d !== 'string' || typeof d.n !== 'number' || d.n < 1 || d.n > 8) return;
+      if (isHost ? d.t !== 'h' : (!d.h || d.t !== me())) return;   // pas pour nous
+      var from = 1;                                                    // vu d'un client, l'hote = 1
+      if (isHost) {
+        if (!idxOf[m.peer]) { idxOf[m.peer] = nextIdx; labelOf[nextIdx] = m.peer; nextIdx++; }
+        from = idxOf[m.peer];
+      }
+      var key = m.peer + ':' + d.k, now = Date.now();
+      var part = partial[key] || (partial[key] = { n: d.n, got: 0, chunks: [], t: now });
+      if (part.chunks[d.f]) return;
+      part.chunks[d.f] = unb64(d.d);
+      if (++part.got < part.n) return;
+      delete partial[key];
+      for (var k in partial) if (now - partial[k].t > 3000) delete partial[k];   // morceaux orphelins
+      var total = 0, o = 0;
+      part.chunks.forEach(function (c) { total += c.length; });
+      var all = new Uint8Array(total);
+      part.chunks.forEach(function (c) { all.set(c, o); o += c.length; });
+      (d.z ? pipe(all, new DecompressionStream('deflate-raw')) : Promise.resolve(all)).then(function (bytes) {
+        if (queue.length < 256) queue.push({ from: from, bytes: bytes });
+      }).catch(function () {});
+    }
+    return {
+      available: function () { return !!room; },
+      open: function (code, host) {
+        this.close();
+        isHost = host; myLabel = null; idxOf = {}; labelOf = {}; nextIdx = 2; queue = []; partial = {};
+        room.join('zcb-' + code).then(function (g) { game = g; unsub = g.on('p', onMsg); })
+          .catch(function (e) { console.log('ZNet : salon indisponible', e && e.code); });
+      },
+      close: function () {
+        if (unsub) unsub();
+        if (game) game.leave().catch(function () {});
+        unsub = null; game = null;
+      },
+      send: function (to, bytes) {
+        var target = isHost ? labelOf[to] : 'h';
+        if (!game || !target) return false;
+        var k = pktId = (pktId + 1) % 1000000000;
+        var go = function (data, z) {
+          var n = Math.max(1, Math.ceil(data.length / FRAG));
+          if (n > 8) return;
+          for (var f = 0; f < n; f++)
+            game.emit('p', { t: target, h: isHost ? 1 : 0, k: k, f: f, n: n, z: z, d: b64(data.subarray(f * FRAG, (f + 1) * FRAG)) })
+              .catch(function () {});
+        };
+        if (canZip && bytes.length > 600) pipe(bytes, new CompressionStream('deflate-raw')).then(function (c) { go(c, 1); }, function () { go(bytes, 0); });
+        else go(bytes, 0);
+        return true;
+      },
+      recv: function () { return queue.shift() || null; }
+    };
+  })();
+</script>
+<script>
   var canvas = document.getElementById('canvas');
   // Clic droit = viser : pas de menu contextuel du navigateur
   canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });

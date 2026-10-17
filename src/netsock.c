@@ -7,6 +7,9 @@
  * Les petites differences sont masquees par les macros sock_t / BAD_SOCKET / CloseSock.
  */
 
+// Version navigateur : remplacee par netsock_web.c (pas de sockets UDP dans un navigateur)
+#if !defined(BR_WEB)
+
 // Macros a definir AVANT tout #include systeme, car elles changent ce que les en-tetes exposent.
 #if defined(_WIN32)
     #define WIN32_LEAN_AND_MEAN         // allege windows.h (exclut entre autres l'ancien winsock.h)
@@ -228,3 +231,5 @@ int SockLocalIPs(char out[][40], int max)
 // Deux adresses sont egales si l'IP et le port correspondent (deux clients derriere la meme
 // box peuvent avoir la meme IP publique mais des ports differents).
 bool SockAddrEqual(NetAddr a, NetAddr b) { return a.ip == b.ip && a.port == b.port; }
+
+#endif   // !BR_WEB
