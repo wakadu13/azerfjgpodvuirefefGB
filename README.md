@@ -1,6 +1,6 @@
 # 🍔 BURGER RUSH : Opération HK416
 
-FPS en **C** avec **raylib**, jouable **seul** ou **à deux en coop locale** (écran partagé). Vous incarnez à la première personne un opérateur armé d'un **HK416** qui défend son stand de burgers contre des vagues de gloutons obèses bien décidés à tout dévorer.
+FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (écran partagé) ou **jusqu'à 4 en réseau** (plusieurs PC). Disponible pour **Windows**, **macOS (Apple Silicon)** et **Linux**. Vous incarnez à la première personne un opérateur armé d'un **HK416** qui défend son stand de burgers contre des vagues de gloutons obèses bien décidés à tout dévorer.
 
 ![Aperçu](docs/apercu.png)
 
@@ -32,16 +32,43 @@ Tout est généré par le code (modèles 3D, sons, textures) : **aucun fichier e
 - Rechargement animé (chargeur qui sort/rentre), plus long à vide (culasse).
 - **Headshot = dégâts x3.**
 
-## 👥 Coop locale
+## 👥 Multijoueur
 
-Au menu, appuyez sur **2** : l'écran se coupe en deux, chaque joueur a sa vue, son HUD et son radar (le coéquipier y apparaît en couleur).
+Au menu :
 
-- Les gloutons s'en prennent au joueur le plus proche, et ils sont plus nombreux (x1,5) et plus résistants.
+| Touche | Mode |
+|---|---|
+| **1** | Solo |
+| **2** | Coop **écran partagé** : 2 joueurs sur le même PC |
+| **3** | **Héberger** une partie réseau (jusqu'à 4 PC) |
+| **4** | **Rejoindre** une partie réseau |
+
+Dans tous les modes à plusieurs :
+
+- Les gloutons s'en prennent au joueur le plus proche ; ils sont plus nombreux (+50 % par joueur supplémentaire) et plus résistants.
 - Un joueur à 0 PV est **à terre** et revient au début de la vague suivante.
-- Game over si les deux joueurs sont à terre ou si tous les burgers sont mangés.
-- Le score est commun, les éliminations sont comptées par joueur.
+- Game over si tous les joueurs sont à terre ou si tous les burgers sont mangés.
+- Le score est commun, les éliminations sont comptées par joueur. Chaque soldat porte une bande de couleur sur le casque (bleu, orange, vert, violet).
+
+### Écran partagé
+
+L'écran se coupe en deux, chaque joueur a sa vue, son HUD et son radar. Contrôles du joueur 2 plus bas.
 
 ![Coop](docs/coop.png)
+
+### Réseau (plusieurs PC)
+
+1. Sur un PC, appuyez sur **3** : l'écran affiche son **adresse IP** (par ex. `192.168.1.20`).
+2. Sur les autres PC (3 maximum), appuyez sur **4**, tapez cette adresse puis **Entrée**.
+3. Quand tout le monde est dans la salle d'attente, l'hôte appuie sur **Entrée**.
+
+- Fonctionne entre Windows, macOS et Linux, sur le même réseau (Wi-Fi / box).
+- Par Internet : l'hôte doit ouvrir le **port UDP 27016** sur sa box (redirection de port).
+- Le pare-feu peut demander l'autorisation au premier lancement : acceptez.
+- En réseau, **Échap** ouvre un menu mais **ne met pas la partie en pause** (Q pour quitter).
+- Un joueur peut rejoindre une partie déjà commencée.
+
+![Réseau](docs/reseau.png)
 
 ## ⌨️ Contrôles
 
@@ -75,19 +102,38 @@ En solo, une manette fonctionne aussi (mêmes boutons que le joueur 2 ci-dessous
 
 Avec deux manettes, la deuxième peut aussi contrôler le joueur 1.
 
-## ⬇️ Télécharger (Windows)
+## ⬇️ Télécharger
 
-Un exécutable Windows prêt à jouer est fourni : **[`release/BurgerRush.exe`](release/BurgerRush.exe)**.
-Il est autonome (aucune DLL à installer) : téléchargez-le et double-cliquez dessus.
+### Windows
+
+**[`release/BurgerRush.exe`](release/BurgerRush.exe)** : autonome (aucune DLL à installer), double-cliquez dessus.
 
 > Windows SmartScreen peut afficher un avertissement car l'exe n'est pas signé : « Informations complémentaires » → « Exécuter quand même ».
+
+### macOS (Apple Silicon : M1, M2, M3, M4…)
+
+L'application est compilée automatiquement sur un Mac par GitHub Actions :
+
+- après fusion sur `main` : **[page des releases → `BurgerRush-macOS-arm64.zip`](../../releases/latest)** ;
+- sinon : onglet **Actions** → dernier run « Build » → section *Artifacts* → `BurgerRush-macOS-arm64`.
+
+Dézippez puis lancez **BurgerRush.app**. L'application n'étant pas signée par un développeur Apple, macOS la bloque la première fois :
+
+- **clic droit** sur `BurgerRush.app` → **Ouvrir** → **Ouvrir** ;
+- ou, si macOS dit qu'elle est « endommagée », dans le Terminal : `xattr -dr com.apple.quarantine ~/Downloads/BurgerRush.app`
+
+### Linux
+
+Même endroit que pour macOS : `BurgerRush-linux-x64.tar.gz` (ou compilez, voir plus bas).
 
 ## 🗂️ Organisation du code
 
 | Fichier | Rôle |
 |---|---|
 | `src/main.c` | Point d'entrée, fenêtre, boucle principale |
-| `src/game.c` | États du jeu (titre, partie, pause, game over) et écran partagé |
+| `src/game.c` | États du jeu (titre, salle d'attente, partie, pause, game over) et écran partagé |
+| `src/net.c` | Multijoueur réseau : l'hôte simule la partie et envoie l'état du monde, chaque client gère son joueur et envoie ses tirs |
+| `src/netsock.c` | Sockets UDP pour Windows, macOS et Linux |
 | `src/player.c` | Commandes (clavier/souris, manette, 2ᵉ clavier), déplacements, vie, caméra, modèle du coéquipier |
 | `src/weapon.c` | HK416 : tir, recul, rechargement, modèle 3D et mains |
 | `src/enemy.c` | Gloutons : IA, dégâts, modèle 3D |
@@ -130,5 +176,7 @@ Pour régénérer l'exe Windows depuis Linux (MinGW + raylib compilée pour Wind
 ```bash
 make windows RAYLIB_WIN_PATH=/chemin/vers/raylib-windows
 ```
+
+Le workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) compile automatiquement les versions macOS ARM, Windows et Linux à chaque pull request.
 
 Sous Linux, les dépendances de raylib sont : `libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl1-mesa-dev`.

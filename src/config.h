@@ -11,12 +11,18 @@
 #define MAX_BOXES      64
 
 // Entites
-#define MAX_PLAYERS    2
+#define MAX_PLAYERS    4       // 2 en ecran partage, jusqu'a 4 en reseau
 #define MAX_ENEMIES    64
 #define MAX_PARTICLES  2048
 #define MAX_TRACERS    64
 #define MAX_PICKUPS    32
 #define MAX_MSGS       6
+
+// Reseau
+#define NET_PORT           27016   // port UDP de l'hote
+#define NET_SNAPSHOT_RATE  30.0f   // etats du monde envoyes par l'hote, par seconde
+#define NET_STATE_RATE     60.0f   // etats des joueurs envoyes par les clients, par seconde
+#define NET_TIMEOUT        6.0f    // secondes sans nouvelles avant deconnexion
 
 // Burgers du stand
 #define MAX_BURGERS    12

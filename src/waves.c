@@ -7,7 +7,7 @@
 #include "game.h"
 #include "enemy.h"
 #include "player.h"
-#include "audio.h"
+#include "effects.h"
 #include "util.h"
 
 #include <math.h>
@@ -17,8 +17,9 @@
 
 int WaveSize(int wave)
 {
+    // +50 % d'ennemis par joueur supplementaire
     int n = 3 + wave*3;
-    return (numPlayers > 1) ? n*3/2 : n;
+    return n*(2 + PlayersConnected() - 1)/2;
 }
 
 void WavesStart(int wave)
@@ -29,10 +30,11 @@ void WavesStart(int wave)
     G.spawnT = 1.0f;
     G.inIntermission = false;
     G.bannerT = 3.0f;
-    PlaySfx(SND_HORN, 1.0f, 0.6f);
+    SfxWorld(SND_HORN, 1.0f, 0.6f);
 
     // Les joueurs tombes reviennent au debut de chaque vague
-    for (int i = 0; i < numPlayers; i++) if (!players[i].alive) PlayerRespawn(&players[i]);
+    for (int i = 0; i < numPlayers; i++)
+        if (players[i].connected && !players[i].alive) PlayerRespawn(&players[i]);
 }
 
 static EnemyType PickType(int wave)
@@ -50,11 +52,11 @@ static void GiveRewards(void)
     for (int i = 0; i < numPlayers; i++)
     {
         Player *p = &players[i];
-        if (!p->alive) continue;
-        p->w.reserve = (p->w.reserve + 90 > MAX_RESERVE) ? MAX_RESERVE : p->w.reserve + 90;
+        if (!p->connected || !p->alive) continue;
+        PlayerGiveAmmo(p, 90);
         p->hp = fminf(100, p->hp + 25);
     }
-    PlaySfx(SND_PICK, 0.8f, 0.6f);
+    SfxWorld(SND_PICK, 0.8f, 0.6f);
 }
 
 void WavesUpdate(float dt)

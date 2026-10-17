@@ -1,5 +1,6 @@
 #include "effects.h"
 #include "config.h"
+#include "net.h"
 #include "util.h"
 
 #include "raymath.h"
@@ -38,6 +39,7 @@ void SpawnParticle(Vector3 p, Vector3 v, float life, float size, float gravity, 
 
 void BurstSauce(Vector3 p, Vector3 dir, int count)
 {
+    NetRecordEvent(EV_SAUCE, p, dir, count, 0, 0);
     for (int i = 0; i < count; i++)
     {
         Color c = (GetRandomValue(0, 2) == 0) ? (Color){ 245, 200, 30, 255 } : (Color){ 200, 20, 15, 255 };   // moutarde / ketchup
@@ -48,6 +50,7 @@ void BurstSauce(Vector3 p, Vector3 dir, int count)
 
 void BurstSparks(Vector3 p, Vector3 normal)
 {
+    NetRecordEvent(EV_SPARKS, p, normal, 0, 0, 0);
     for (int i = 0; i < 8; i++)
     {
         Vector3 v = Vector3Add(Vector3Scale(normal, Randf(1.0f, 4.0f)), V3(Randf(-2, 2), Randf(-1, 3), Randf(-2, 2)));
@@ -62,6 +65,7 @@ void BurstSparks(Vector3 p, Vector3 normal)
 
 void BurstCrumbs(Vector3 p)
 {
+    NetRecordEvent(EV_CRUMBS, p, V3(0, 0, 0), 0, 0, 0);
     for (int i = 0; i < 10; i++)
     {
         Color c = GetRandomValue(0, 1) ? (Color){ 214, 150, 62, 255 } : (Color){ 92, 50, 26, 255 };
@@ -71,12 +75,19 @@ void BurstCrumbs(Vector3 p)
 
 void AddTracer(Vector3 from, Vector3 to)
 {
+    NetRecordEvent(EV_TRACER, from, to, 0, 0, 0);
     for (int i = 0; i < MAX_TRACERS; i++)
     {
         if (tracers[i].life > 0) continue;
         tracers[i] = (Tracer){ from, to, TRACER_LIFE };
         return;
     }
+}
+
+void SfxWorld(SndId id, float pitch, float volume)
+{
+    NetRecordEvent(EV_SOUND, V3(0, 0, 0), V3(0, 0, 0), id, pitch, volume);
+    PlaySfx(id, pitch, volume);
 }
 
 void EffectsUpdate(float dt)

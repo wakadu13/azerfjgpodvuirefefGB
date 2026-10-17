@@ -13,6 +13,7 @@
 #include "audio.h"
 #include "render.h"
 #include "hud.h"
+#include "net.h"
 #include "util.h"
 
 #include "raymath.h"
@@ -117,7 +118,7 @@ static void Shoot(Player *p)
     w->bloom = fminf(w->bloom + 0.006f, 0.04f);
     w->sprintT = 0.0f;
     p->shake = fmaxf(p->shake, 0.04f);
-    PlaySfx(SND_SHOT, Randf(0.92f, 1.08f), 0.55f);
+    SfxWorld(SND_SHOT, Randf(0.92f, 1.08f), 0.55f);
 
     // Direction du tir = regard + dispersion aleatoire dans un cone
     Vector3 eye = PlayerEye(p);
@@ -136,7 +137,14 @@ static void Shoot(Player *p)
 
     Vector3 hit = Vector3Add(eye, Vector3Scale(dir, dist));
     AddTracer(WeaponMuzzleWorld(p), hit);
-    if (target >= 0) EnemyDamage(&enemies[target], BULLET_DAMAGE*(head ? HEADSHOT_MULT : 1.0f), head, hit, dir, p);
+    float dmg = BULLET_DAMAGE*(head ? HEADSHOT_MULT : 1.0f);
+    if (target >= 0 && NetIsClient())
+    {
+        // En reseau, c'est l'hote qui applique les degats
+        EnemyPredictHit(&enemies[target], dmg, head, hit, dir, p);
+        NetReportHit(target, dmg, head, hit, dir);
+    }
+    else if (target >= 0) EnemyDamage(&enemies[target], dmg, head, hit, dir, p);
     else if (hitWorld) BurstSparks(hit, normal);
 }
 
@@ -167,7 +175,7 @@ void WeaponUpdate(Player *p, float dt)
     if (in->toggleMode)
     {
         w->semi = !w->semi;
-        FeedAdd(SKYBLUE, "%sMode de tir : %s", PlayerTag(p), w->semi ? "semi-auto" : "automatique");
+        FeedAddLocal(SKYBLUE, "%sMode de tir : %s", PlayerTag(p), w->semi ? "semi-auto" : "automatique");
         PlaySfx(SND_CLICK, 1.4f, 0.5f);
     }
 

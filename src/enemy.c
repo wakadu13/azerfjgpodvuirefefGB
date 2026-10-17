@@ -7,6 +7,7 @@
  */
 #include "enemy.h"
 #include "map.h"
+#include "net.h"
 #include "effects.h"
 #include "pickup.h"
 #include "audio.h"
@@ -24,6 +25,12 @@
 #define EAT_TIME     4.0f    // secondes pour avaler un burger
 
 Enemy enemies[MAX_ENEMIES];
+
+static const Color SHIRTS[] = { { 230, 70, 60, 255 }, { 60, 120, 220, 255 }, { 250, 250, 245, 255 }, { 250, 200, 60, 255 },
+                                { 120, 190, 90, 255 }, { 200, 90, 200, 255 }, { 255, 140, 40, 255 } };
+static const Color SKINS[] = { { 255, 210, 170, 255 }, { 230, 180, 140, 255 }, { 190, 135, 95, 255 }, { 130, 90, 60, 255 } };
+static const Color PANTS[] = { { 50, 70, 120, 255 }, { 70, 70, 75, 255 }, { 110, 90, 60, 255 }, { 40, 40, 45, 255 } };
+#define SHIRT_WHITE 2
 
 void EnemiesClear(void) { memset(enemies, 0, sizeof(enemies)); }
 
@@ -58,14 +65,14 @@ static void SetStats(Enemy *e, int wave)
         case E_TANK: e->maxHp = 320; e->speed = 1.7f; e->sz = 1.35f; e->fat = 1.35f; e->dmg = 20; break;
         case E_BOSS:
             e->maxHp = 2200 + 300*wave; e->speed = 1.9f; e->sz = 2.3f; e->fat = 1.4f; e->dmg = 35;
-            e->shirt = (Color){ 240, 240, 240, 255 };
+            e->shirt = SHIRT_WHITE;
             e->hasCap = false;
             break;
         default:     e->maxHp = 90;  e->speed = 2.7f; e->sz = 1.0f;  e->fat = 1.0f;  e->dmg = 12; break;
     }
     // Plus resistants et un peu plus rapides au fil des vagues (et en coop)
     if (e->type != E_BOSS) e->maxHp *= 1.0f + 0.12f*(wave - 1);
-    if (numPlayers > 1) e->maxHp *= 1.25f;
+    if (PlayersConnected() > 1) e->maxHp *= 1.25f;
     e->speed *= fminf(1.0f + 0.03f*(wave - 1), 1.4f);
     e->hp = e->maxHp;
 }
@@ -85,11 +92,6 @@ static Vector3 GateSpawnPoint(void)
 
 void EnemySpawn(EnemyType type, int wave)
 {
-    static const Color shirts[] = { { 230, 70, 60, 255 }, { 60, 120, 220, 255 }, { 250, 250, 245, 255 }, { 250, 200, 60, 255 },
-                                    { 120, 190, 90, 255 }, { 200, 90, 200, 255 }, { 255, 140, 40, 255 } };
-    static const Color skins[] = { { 255, 210, 170, 255 }, { 230, 180, 140, 255 }, { 190, 135, 95, 255 }, { 130, 90, 60, 255 } };
-    static const Color pants[] = { { 50, 70, 120, 255 }, { 70, 70, 75, 255 }, { 110, 90, 60, 255 }, { 40, 40, 45, 255 } };
-
     Enemy *e = NULL;
     for (int i = 0; i < MAX_ENEMIES; i++) if (!enemies[i].active) { e = &enemies[i]; break; }
     if (!e) return;
@@ -98,11 +100,11 @@ void EnemySpawn(EnemyType type, int wave)
     e->active = true;
     e->type = type;
     e->state = ES_WALK;
-    e->shirt = shirts[GetRandomValue(0, 6)];
-    e->skin = skins[GetRandomValue(0, 3)];
-    e->pants = pants[GetRandomValue(0, 3)];
+    e->shirt = (unsigned char)GetRandomValue(0, 6);
+    e->skin = (unsigned char)GetRandomValue(0, 3);
+    e->pants = (unsigned char)GetRandomValue(0, 3);
     e->hasCap = GetRandomValue(0, 2) == 0;
-    e->capCol = shirts[GetRandomValue(0, 6)];
+    e->cap = (unsigned char)GetRandomValue(0, 6);
     e->phase = Randf(0, 2*PI);
     e->sideSign = GetRandomValue(0, 1) ? 1.0f : -1.0f;
     SetStats(e, wave);
@@ -159,7 +161,7 @@ static void KillEnemy(Enemy *e, bool head, Vector3 dir, Player *shooter)
 
     FeedAdd(head ? ORANGE : RAYWHITE, head ? "%s%s neutralise (HEADSHOT)" : "%s%s neutralise", PlayerTag(shooter), EnemyName(e->type));
     BurstSauce(V3(e->pos.x, 1.2f*e->sz, e->pos.z), dir, e->type == E_BOSS ? 120 : 40);
-    PlaySfx(SND_KILL, 1.0f, 0.5f);
+    SfxWorld(SND_KILL, 1.0f, 0.5f);
     PickupDrop(e->pos);
     if (e->type == E_BOSS)
     {
@@ -176,8 +178,30 @@ void EnemyDamage(Enemy *e, float dmg, bool head, Vector3 hitPos, Vector3 dir, Pl
     shooter->hitKill = false;
     shooter->hitHead = head;
     BurstSauce(hitPos, Vector3Negate(dir), head ? 14 : 7);
-    PlaySfx(SND_HIT, Randf(0.9f, 1.15f), 0.7f);
+    SfxWorld(SND_HIT, Randf(0.9f, 1.15f), 0.7f);
     if (e->hp <= 0) KillEnemy(e, head, dir, shooter);
+}
+
+void EnemyPredictHit(Enemy *e, float dmg, bool head, Vector3 hitPos, Vector3 dir, Player *shooter)
+{
+    // Effets locaux seulement (non retransmis) : l'hote rejouera les siens
+    NetSuppress(true);
+    e->hp -= dmg;
+    e->hitFlash = 1.0f;
+    shooter->hitT = 0.18f;
+    shooter->hitHead = head;
+    shooter->hitKill = e->hp <= 0;
+    BurstSauce(hitPos, Vector3Negate(dir), head ? 14 : 7);
+    PlaySfx(SND_HIT, Randf(0.9f, 1.15f), 0.7f);
+    if (e->hp <= 0)
+    {
+        e->state = ES_DEAD;
+        e->deadT = 0;
+        e->predictT = 0.8f;
+        BurstSauce(V3(e->pos.x, 1.2f*e->sz, e->pos.z), dir, 40);
+        PlaySfx(SND_KILL, 1.0f, 0.5f);
+    }
+    NetSuppress(false);
 }
 
 //----------------------------------------------------------------------------------
@@ -190,7 +214,7 @@ static void EatBurger(Enemy *e)
     e->fat = fminf(e->fat + 0.15f, e->type == E_BOSS ? 2.0f : 2.2f);
     e->hp = fminf(e->hp + e->maxHp*0.3f, e->maxHp*1.6f);
     BurstCrumbs(V3(e->pos.x, 1.9f*e->sz, e->pos.z));
-    PlaySfx(SND_NOM, Randf(0.85f, 1.15f), 0.9f);
+    SfxWorld(SND_NOM, Randf(0.85f, 1.15f), 0.9f);
     FeedAdd((Color){ 255, 120, 80, 255 }, "%s a mange un burger !", EnemyName(e->type));
     if (G.burgers == 0) GameOver("Les gloutons ont devore tous les burgers !");
 }
@@ -271,7 +295,7 @@ static void UpdateEnemy(Enemy *e, float dt)
     e->phase += dt*spd*3.2f/e->sz;
 }
 
-// Les gloutons se repoussent entre eux et repoussent les joueurs
+// Les gloutons se repoussent entre eux
 static void SeparateEnemies(void)
 {
     for (int i = 0; i < MAX_ENEMIES; i++)
@@ -291,10 +315,20 @@ static void SeparateEnemies(void)
             a->pos.x -= dx/d*push*wa; a->pos.z -= dz/d*push*wa;
             b->pos.x += dx/d*push*wb; b->pos.z += dz/d*push*wb;
         }
+    }
+}
+
+// Les gloutons repoussent les joueurs (en reseau, chacun gere le sien)
+void EnemiesPushPlayers(bool localOnly)
+{
+    for (int i = 0; i < MAX_ENEMIES; i++)
+    {
+        Enemy *a = &enemies[i];
+        if (!a->active || a->state == ES_DEAD) continue;
         for (int k = 0; k < numPlayers; k++)
         {
             Player *p = &players[k];
-            if (!p->alive || p->pos.y >= 1.5f*a->sz) continue;
+            if (!p->connected || !p->alive || (localOnly && !p->local) || p->pos.y >= 1.5f*a->sz) continue;
             float dx = p->pos.x - a->pos.x, dz = p->pos.z - a->pos.z;
             float rr = EnemyRadius(a) + PLAYER_RADIUS;
             float d2 = dx*dx + dz*dz;
@@ -324,6 +358,34 @@ void EnemiesUpdate(float dt)
         UpdateEnemy(e, dt);
     }
     SeparateEnemies();
+    EnemiesPushPlayers(false);
+}
+
+void EnemiesClientUpdate(float dt)
+{
+    // L'etat vient de l'hote ~30 fois/s : on lisse la position et on anime
+    // localement entre deux paquets.
+    float k = fminf(1.0f, dt*12.0f);
+    for (int i = 0; i < MAX_ENEMIES; i++)
+    {
+        Enemy *e = &enemies[i];
+        if (!e->active) continue;
+        e->hitFlash = fmaxf(0, e->hitFlash - dt*6);
+        e->attackAnim = fmaxf(0, e->attackAnim - dt*2.5f);
+        e->predictT -= dt;
+        if (e->state == ES_DEAD) { e->deadT += dt; continue; }
+        if (e->state == ES_EAT) e->eatT += dt;
+
+        Vector3 old = e->pos;
+        e->pos = Vector3Lerp(e->pos, e->netPos, k);
+        float dy = e->netYaw - e->yaw;
+        while (dy > PI) dy -= 2*PI;
+        while (dy < -PI) dy += 2*PI;
+        e->yaw += dy*k;
+        float moved = Vector3Distance(old, e->pos);
+        if (e->state == ES_WALK) e->phase += moved*3.2f/(e->sz*(0.7f + 0.3f*e->fat));
+    }
+    EnemiesPushPlayers(true);
 }
 
 //----------------------------------------------------------------------------------
@@ -388,8 +450,9 @@ static void DrawHead(Matrix body, const Enemy *e, Color skin, float hf)
 
     if (e->hasCap)   // casquette a l'envers
     {
-        Ball(body, V3(0, 2.2f, 0), V3(0.31f, 0.16f, 0.31f), Flash(e->capCol, hf));
-        Box3(body, V3(0, 2.2f, -0.3f), NOROT, V3(0.26f, 0.03f, 0.22f), Flash(e->capCol, hf));
+        Color cap = Flash(SHIRTS[e->cap % 7], hf);
+        Ball(body, V3(0, 2.2f, 0), V3(0.31f, 0.16f, 0.31f), cap);
+        Box3(body, V3(0, 2.2f, -0.3f), NOROT, V3(0.26f, 0.03f, 0.22f), cap);
     }
     if (e->type == E_BOSS)   // couronne + bavoir plein de ketchup
     {
@@ -421,7 +484,7 @@ static void DrawEnemy(const Enemy *e)
                                  MatrixRotateY(e->yaw)), MatrixTranslate(e->pos.x, -sink, e->pos.z));
 
     float hf = e->hitFlash;   // flash blanc quand il est touche
-    Color skin = Flash(e->skin, hf), shirt = Flash(e->shirt, hf), pants = Flash(e->pants, hf);
+    Color skin = Flash(SKINS[e->skin % 4], hf), shirt = Flash(SHIRTS[e->shirt % 7], hf), pants = Flash(PANTS[e->pants % 4], hf);
 
     bool walking = e->state == ES_WALK;
     float sw = walking ? sinf(e->phase) : 0.0f;

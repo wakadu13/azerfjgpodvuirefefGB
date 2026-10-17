@@ -13,8 +13,6 @@
 #define PICKUP_LIFE   25.0f
 #define PICKUP_RANGE  1.3f
 
-typedef enum { PK_AMMO, PK_SALAD } PickupType;
-
 typedef struct {
     bool active;
     PickupType type;
@@ -44,7 +42,7 @@ static bool Collect(Player *p, PickupType type)
     if (type == PK_AMMO)
     {
         if (p->w.reserve >= MAX_RESERVE) return false;
-        p->w.reserve = (p->w.reserve + 60 > MAX_RESERVE) ? MAX_RESERVE : p->w.reserve + 60;
+        PlayerGiveAmmo(p, 60);
         FeedAdd(GREEN, "%s+60 munitions 5.56", PlayerTag(p));
     }
     else
@@ -53,7 +51,7 @@ static bool Collect(Player *p, PickupType type)
         p->hp = fminf(100, p->hp + 35);
         FeedAdd(LIME, "%s+35 PV (une salade, beurk)", PlayerTag(p));
     }
-    PlaySfx(SND_PICK, 1.0f, 0.6f);
+    if (p->local) PlaySfx(SND_PICK, 1.0f, 0.6f);
     return true;
 }
 
@@ -69,10 +67,29 @@ void PickupsUpdate(float dt)
         {
             Player *p = &players[j];
             float dx = k->pos.x - p->pos.x, dz = k->pos.z - p->pos.z;
-            if (!p->alive || p->pos.y > 1.5f || dx*dx + dz*dz > PICKUP_RANGE*PICKUP_RANGE) continue;
+            if (!p->connected || !p->alive || p->pos.y > 1.5f || dx*dx + dz*dz > PICKUP_RANGE*PICKUP_RANGE) continue;
             if (Collect(p, k->type)) k->active = false;
         }
     }
+}
+
+bool PickupGet(int idx, int *type, Vector3 *pos, float *t)
+{
+    const Pickup *k = &pickups[idx];
+    *type = k->type;
+    *pos = k->pos;
+    *t = k->t;
+    return k->active;
+}
+
+void PickupSet(int idx, bool active, int type, Vector3 pos, float t)
+{
+    pickups[idx] = (Pickup){ active, (PickupType)type, pos, t };
+}
+
+void PickupsAnimate(float dt)
+{
+    for (int i = 0; i < MAX_PICKUPS; i++) if (pickups[i].active) pickups[i].t += dt;
 }
 
 void PickupsDraw(void)

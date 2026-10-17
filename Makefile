@@ -17,7 +17,7 @@ endif
 UNAME_S := $(shell uname -s 2>/dev/null)
 ifeq ($(OS),Windows_NT)
     TARGET := $(TARGET).exe
-    LDLIBS := -lraylib -lopengl32 -lgdi32 -lwinmm
+    LDLIBS := -lraylib -lopengl32 -lgdi32 -lwinmm -lws2_32
 else ifeq ($(UNAME_S),Darwin)
     LDLIBS := -lraylib -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -framework CoreAudio
 else
@@ -38,7 +38,7 @@ MINGW_CC ?= x86_64-w64-mingw32-gcc
 windows: $(SRC) $(HDR)
 	mkdir -p release
 	$(MINGW_CC) -std=c99 -O2 -I$(RAYLIB_WIN_PATH)/src $(SRC) -o release/BurgerRush.exe \
-		-L$(RAYLIB_WIN_PATH)/src -lraylib -lopengl32 -lgdi32 -lwinmm -static -static-libgcc -mwindows
+		-L$(RAYLIB_WIN_PATH)/src -lraylib -lopengl32 -lgdi32 -lwinmm -lws2_32 -static -static-libgcc -mwindows
 
 clean:
 	rm -f $(TARGET) $(TARGET).exe

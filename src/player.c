@@ -2,15 +2,16 @@
  * player.c - Joueurs : lecture des commandes, deplacement, vie, camera.
  *
  * Attribution des peripheriques :
- *   Solo : J1 = clavier/souris (ZQSD, WASD ou fleches) + manette 1.
- *   Coop : J1 = clavier/souris (ZQSD/WASD) [+ manette 2 si branchee]
- *          J2 = manette 1, ou a defaut le pave IJKL + fleches.
+ *   Solo / reseau : clavier/souris (ZQSD, WASD ou fleches) + manette 1.
+ *   Ecran partage : J1 = clavier/souris (ZQSD/WASD) [+ manette 2 si branchee]
+ *                   J2 = manette 1, ou a defaut le pave IJKL + fleches.
  */
 #include "player.h"
 #include "map.h"
 #include "audio.h"
 #include "hud.h"
 #include "game.h"
+#include "net.h"
 #include "render.h"
 #include "util.h"
 
@@ -22,7 +23,9 @@
 Player players[MAX_PLAYERS];
 int numPlayers = 1;
 
-static const Color PLAYER_COLORS[MAX_PLAYERS] = { { 70, 150, 255, 255 }, { 255, 140, 40, 255 } };
+static const Color PLAYER_COLORS[MAX_PLAYERS] = {
+    { 70, 150, 255, 255 }, { 255, 140, 40, 255 }, { 90, 220, 90, 255 }, { 230, 90, 230, 255 }
+};
 
 //----------------------------------------------------------------------------------
 // Creation / reapparition
@@ -30,7 +33,32 @@ static const Color PLAYER_COLORS[MAX_PLAYERS] = { { 70, 150, 255, 255 }, { 255, 
 static Vector3 SpawnPoint(int id)
 {
     if (numPlayers == 1) return V3(0, 0, 9);
-    return V3(id == 0 ? -1.5f : 1.5f, 0, 9);
+    float spacing = (numPlayers == 2) ? 3.0f : 1.5f;
+    return V3((id - (numPlayers - 1)*0.5f)*spacing, 0, 9);
+}
+
+// Remet un emplacement a zero (nouvelle partie). Les compteurs reseau et
+// l'etat de connexion sont conserves.
+static void SetupSlot(Player *p, int id)
+{
+    Player keep = *p;
+    memset(p, 0, sizeof(*p));
+    p->id = id;
+    p->color = PLAYER_COLORS[id];
+    p->connected = keep.connected;
+    p->local = keep.local;
+    p->ammoGrant = keep.ammoGrant;
+    p->ammoGrantSeen = keep.ammoGrantSeen;
+    p->respawnCount = keep.respawnCount + 1;
+    p->respawnSeen = keep.respawnSeen;
+    p->alive = true;
+    p->pos = p->netPos = SpawnPoint(id);
+    p->yaw = p->netYaw = PI;   // face au stand
+    p->pitch = -0.08f;
+    p->hp = 100;
+    p->grounded = true;
+    p->cam.fovy = FOV_HIP;
+    WeaponReset(&p->w);
 }
 
 void PlayersReset(int count)
@@ -39,45 +67,100 @@ void PlayersReset(int count)
     memset(players, 0, sizeof(players));
     for (int i = 0; i < count; i++)
     {
-        Player *p = &players[i];
-        p->id = i;
-        p->color = PLAYER_COLORS[i];
-        p->alive = true;
-        p->pos = SpawnPoint(i);
-        p->yaw = PI;          // face au stand
-        p->pitch = -0.08f;
-        p->hp = 100;
-        p->grounded = true;
-        p->cam.fovy = FOV_HIP;
-        WeaponReset(&p->w);
+        players[i].connected = true;
+        players[i].local = true;
+        SetupSlot(&players[i], i);
     }
+}
+
+void PlayersResetNet(int localId)
+{
+    numPlayers = MAX_PLAYERS;
+    memset(players, 0, sizeof(players));
+    for (int i = 0; i < MAX_PLAYERS; i++)
+    {
+        players[i].id = i;
+        players[i].color = PLAYER_COLORS[i];
+    }
+    players[localId].connected = true;
+    players[localId].local = true;
+    SetupSlot(&players[localId], localId);
+}
+
+void PlayersRestart(void)
+{
+    for (int i = 0; i < numPlayers; i++)
+        if (players[i].connected) SetupSlot(&players[i], i);
+}
+
+void PlayerJoin(int id)
+{
+    Player *p = &players[id];
+    p->connected = true;
+    p->local = false;
+    SetupSlot(p, id);
+    FeedAdd(p->color, "%sa rejoint la partie", PlayerTag(p));
+}
+
+void PlayerLeave(int id)
+{
+    Player *p = &players[id];
+    p->connected = false;
+    p->alive = false;
+}
+
+void PlayerRefillWeapon(Player *p)
+{
+    p->w.reloading = false;
+    p->w.ammo = MAG_SIZE;
+    if (p->w.reserve < 90) p->w.reserve = 90;
 }
 
 void PlayerRespawn(Player *p)
 {
     p->alive = true;
     p->hp = 60;
-    p->pos = SpawnPoint(p->id);
+    p->pos = p->netPos = SpawnPoint(p->id);
     p->vel = V3(0, 0, 0);
-    p->yaw = PI;
+    p->yaw = p->netYaw = PI;
     p->pitch = -0.08f;
-    p->w.reloading = false;
-    p->w.ammo = MAG_SIZE;
-    if (p->w.reserve < 90) p->w.reserve = 90;
+    p->respawnCount++;
+    if (p->local) PlayerRefillWeapon(p);
     FeedAdd(p->color, "%sest de retour !", PlayerTag(p));
+}
+
+void PlayerGiveAmmo(Player *p, int amount)
+{
+    // Les munitions d'un joueur distant sont gerees sur sa machine : on lui
+    // transmet un cumul qu'il applique lui-meme.
+    if (!p->local) { p->ammoGrant += amount; return; }
+    p->w.reserve = (p->w.reserve + amount > MAX_RESERVE) ? MAX_RESERVE : p->w.reserve + amount;
 }
 
 const char *PlayerTag(const Player *p)
 {
-    if (numPlayers == 1) return "";
-    return p->id == 0 ? "J1 " : "J2 ";
+    static const char *tags[MAX_PLAYERS] = { "J1 ", "J2 ", "J3 ", "J4 " };
+    return (numPlayers == 1) ? "" : tags[p->id];
 }
 
 int PlayersAlive(void)
 {
     int n = 0;
-    for (int i = 0; i < numPlayers; i++) if (players[i].alive) n++;
+    for (int i = 0; i < numPlayers; i++) if (players[i].connected && players[i].alive) n++;
     return n;
+}
+
+int PlayersConnected(void)
+{
+    int n = 0;
+    for (int i = 0; i < numPlayers; i++) if (players[i].connected) n++;
+    return n;
+}
+
+Player *FirstLocalPlayer(void)
+{
+    for (int i = 0; i < numPlayers; i++) if (players[i].local) return &players[i];
+    return &players[0];
 }
 
 Player *NearestAlivePlayer(Vector3 pos, float *dist)
@@ -87,7 +170,7 @@ Player *NearestAlivePlayer(Vector3 pos, float *dist)
     for (int i = 0; i < numPlayers; i++)
     {
         Player *p = &players[i];
-        if (!p->alive) continue;
+        if (!p->connected || !p->alive) continue;
         float dx = p->pos.x - pos.x, dz = p->pos.z - pos.z;
         float d = sqrtf(dx*dx + dz*dz);
         if (d < bd) { bd = d; best = p; }
@@ -179,10 +262,11 @@ void PlayersReadInput(float dt)
     for (int i = 0; i < numPlayers; i++)
     {
         Player *p = &players[i];
+        if (!p->local) continue;
         PlayerInput *in = &p->in;
         *in = (PlayerInput){ 0 };
 
-        if (numPlayers == 1)
+        if (G.mode != MODE_SPLIT)
         {
             ReadKeyboardMouse(in, true);
             ReadGamepad(in, 0, dt);
@@ -214,14 +298,14 @@ void PlayerHurt(Player *p, float dmg)
     p->hurtT = 1.0f;
     p->regenDelay = 5.0f;
     p->shake = fmaxf(p->shake, 0.3f);
-    PlaySfx(SND_HURT, Randf(0.9f, 1.1f), 0.8f);
+    if (p->local) PlaySfx(SND_HURT, Randf(0.9f, 1.1f), 0.8f);
     if (p->hp > 0) return;
 
     p->hp = 0;
     p->alive = false;
     p->deadT = 0;
     if (PlayersAlive() == 0)
-        GameOver(numPlayers == 1 ? "Vous avez ete devore par les gloutons..." : "Toute l'escouade a ete devoree...");
+        GameOver(PlayersConnected() == 1 ? "Vous avez ete devore par les gloutons..." : "Toute l'escouade a ete devoree...");
     else
         FeedAdd(RED, "%sest tombe ! Retour a la prochaine vague", PlayerTag(p));
 }
@@ -278,8 +362,32 @@ void PlayerUpdate(Player *p, float dt)
 
     MovePlayer(p, dt);
 
+    // La vie est geree par l'hote : un client se contente d'afficher celle recue
     p->regenDelay -= dt;
-    if (p->regenDelay <= 0 && p->hp < 100) p->hp = fminf(100, p->hp + dt*6.0f);
+    if (NetIsAuthority() && p->regenDelay <= 0 && p->hp < 100) p->hp = fminf(100, p->hp + dt*6.0f);
+}
+
+static float LerpAngle(float a, float b, float t)
+{
+    float d = b - a;
+    while (d > PI) d -= 2*PI;
+    while (d < -PI) d += 2*PI;
+    return a + d*t;
+}
+
+void PlayerUpdateRemote(Player *p, float dt)
+{
+    // Lissage vers la derniere position recue (les paquets arrivent 30 a 60 fois/s)
+    float k = fminf(1.0f, dt*15.0f);
+    if (Vector3Distance(p->pos, p->netPos) > 4.0f) p->pos = p->netPos;   // teleportation (reapparition)
+    else p->pos = Vector3Lerp(p->pos, p->netPos, k);
+    p->yaw = LerpAngle(p->yaw, p->netYaw, k);
+    p->pitch += (p->netPitch - p->pitch)*k;
+    p->w.muzzleT -= dt;
+    p->hurtT = fmaxf(0, p->hurtT - dt*1.5f);
+    if (!p->alive) p->deadT += dt;
+    p->regenDelay -= dt;
+    if (NetIsAuthority() && p->alive && p->regenDelay <= 0 && p->hp < 100) p->hp = fminf(100, p->hp + dt*6.0f);
 }
 
 void PlayerUpdateCamera(Player *p, float dt)
@@ -311,7 +419,7 @@ void PlayerUpdateCamera(Player *p, float dt)
 }
 
 //----------------------------------------------------------------------------------
-// Modele du soldat (vu par le coequipier)
+// Modele du soldat (vu par les autres joueurs)
 //----------------------------------------------------------------------------------
 void PlayerDrawBody(const Player *p)
 {

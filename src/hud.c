@@ -5,6 +5,8 @@
 #include "game.h"
 #include "enemy.h"
 #include "waves.h"
+#include "net.h"
+#include "netsock.h"
 #include "util.h"
 
 #include "raymath.h"
@@ -27,15 +29,33 @@ static const Color PANEL = { 0, 0, 0, 110 };
 //----------------------------------------------------------------------------------
 void FeedClear(void) { memset(feed, 0, sizeof(feed)); }
 
-void FeedAdd(Color c, const char *fmt, ...)
+void FeedPush(Color c, const char *text)
 {
     for (int i = MAX_MSGS - 1; i > 0; i--) feed[i] = feed[i - 1];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(feed[0].text, sizeof(feed[0].text), fmt, args);
-    va_end(args);
+    snprintf(feed[0].text, sizeof(feed[0].text), "%s", text);
     feed[0].t = 4.0f;
     feed[0].c = c;
+}
+
+void FeedAdd(Color c, const char *fmt, ...)
+{
+    char text[96];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(text, sizeof(text), fmt, args);
+    va_end(args);
+    FeedPush(c, text);
+    NetRecordFeed(c, text);
+}
+
+void FeedAddLocal(Color c, const char *fmt, ...)
+{
+    char text[96];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(text, sizeof(text), fmt, args);
+    va_end(args);
+    FeedPush(c, text);
 }
 
 void FeedUpdate(float dt)
@@ -95,12 +115,16 @@ static void DrawCrosshair(const Player *p, int cx, int cy)
     }
 }
 
-static void DrawHealth(const Player *p, int h, bool split)
+static void DrawHealth(const Player *p, int h, bool showName)
 {
     char buf[32];
     int x = 30, y = h - 60;
     DrawRectangle(x - 4, y - 26, 268, 56, PANEL);
-    if (split) TextShadow(p->id == 0 ? "JOUEUR 1" : "JOUEUR 2", x, y - 22, 16, p->color);
+    if (showName)
+    {
+        snprintf(buf, sizeof(buf), "JOUEUR %d", p->id + 1);
+        TextShadow(buf, x, y - 22, 16, p->color);
+    }
     else TextShadow("SANTE", x, y - 22, 16, RAYWHITE);
     DrawRectangle(x, y, 260, 20, (Color){ 40, 40, 40, 200 });
     Color hc = p->hp > 50 ? (Color){ 90, 220, 90, 255 } : (p->hp > 25 ? (Color){ 240, 190, 40, 255 } : (Color){ 230, 50, 40, 255 });
@@ -158,9 +182,9 @@ static void DrawRadar(const Player *p, int cx, int cy, int R)
         if (Vector2Distance(sp, center) > R - 3) continue;
         DrawCircleV(sp, e->type == E_BOSS ? 6.0f : 3.0f, e->state == ES_EAT ? ORANGE : RED);
     }
-    for (int i = 0; i < numPlayers; i++)   // coequipier
+    for (int i = 0; i < numPlayers; i++)   // coequipiers
     {
-        if (&players[i] == p || !players[i].alive) continue;
+        if (&players[i] == p || !players[i].connected || !players[i].alive) continue;
         sp = TO_RADAR(players[i].pos.x, players[i].pos.z);
         if (Vector2Distance(sp, center) <= R - 3) DrawCircleV(sp, 4.0f, players[i].color);
     }
@@ -168,8 +192,9 @@ static void DrawRadar(const Player *p, int cx, int cy, int R)
     DrawTriangle((Vector2){ (float)cx, cy - 7.0f }, (Vector2){ cx - 5.0f, cy + 5.0f }, (Vector2){ cx + 5.0f, cy + 5.0f }, WHITE);
 }
 
-void HudDrawPlayer(const Player *p, int w, int h, bool split)
+void HudDrawPlayer(const Player *p, int w, int h, bool showName)
 {
+    bool split = (G.mode == MODE_SPLIT);
     int cx = w/2, cy = h/2;
     DrawDamageVignette(p, w, h);
     if (!p->alive)
@@ -180,7 +205,7 @@ void HudDrawPlayer(const Player *p, int w, int h, bool split)
         return;
     }
     DrawCrosshair(p, cx, cy);
-    DrawHealth(p, h, split);
+    DrawHealth(p, h, showName);
     DrawAmmo(p, w, h, cx, cy);
     DrawRadar(p, 95, split ? 165 : 105, 75);   // en ecran partage, sous la barre de burgers
 }
@@ -227,6 +252,21 @@ static void DrawWaveBanners(int cx, int h)
     }
 }
 
+// Liste des joueurs en reseau (couleur, vie, eliminations)
+static void DrawScoreboard(int x, int y)
+{
+    char buf[64];
+    for (int i = 0; i < numPlayers; i++)
+    {
+        const Player *p = &players[i];
+        if (!p->connected) continue;
+        snprintf(buf, sizeof(buf), "J%d%s  %d elim.%s", i + 1, p->local ? " (vous)" : "", p->kills, p->alive ? "" : "  - A TERRE");
+        DrawRectangle(x, y + 4, 10, 10, p->color);
+        TextShadow(buf, x + 16, y, 18, p->alive ? RAYWHITE : GRAY);
+        y += 22;
+    }
+}
+
 void HudDrawShared(int w, int h, bool split)
 {
     char buf[96];
@@ -250,8 +290,10 @@ void HudDrawShared(int w, int h, bool split)
         TextShadow(buf, 20, 228, 18, RAYWHITE);
         snprintf(buf, sizeof(buf), "SCORE  %d", G.score);
         TextShadow(buf, w - 20 - MeasureText(buf, 28), 16, 28, RAYWHITE);
-        snprintf(buf, sizeof(buf), "Eliminations %d  |  Headshots %d", players[0].kills, players[0].headshots);
+        const Player *me = FirstLocalPlayer();
+        snprintf(buf, sizeof(buf), "Eliminations %d  |  Headshots %d", me->kills, me->headshots);
         TextShadow(buf, w - 20 - MeasureText(buf, 16), 50, 16, LIGHTGRAY);
+        if (G.mode == MODE_NET) DrawScoreboard(20, 256);
     }
     DrawFeed(w);
     DrawWaveBanners(cx, h);
@@ -263,16 +305,21 @@ void HudDrawShared(int w, int h, bool split)
 void HudDrawTitle(int w, int h)
 {
     char buf[64];
-    int cx = w/2, y = h/7;
+    int cx = w/2, y = h/8;
     DrawRectangle(0, 0, w, h, (Color){ 0, 0, 0, 110 });
     TextCenter("BURGER RUSH", cx, y, 90, (Color){ 255, 200, 60, 255 });
     TextCenter("OPERATION HK416", cx, y + 95, 36, RAYWHITE);
-    TextCenter("Des hordes de gloutons veulent devorer votre stand de burgers.", cx, y + 150, 22, LIGHTGRAY);
-    TextCenter("Defendez-le avec votre HK416. Ne les laissez pas tout manger !", cx, y + 178, 22, LIGHTGRAY);
+    TextCenter("Des hordes de gloutons veulent devorer votre stand de burgers. Defendez-le !", cx, y + 145, 20, LIGHTGRAY);
 
+    const char *menu[] = {
+        "[1] ou ENTREE : SOLO",
+        "[2] : COOP ECRAN PARTAGE (2 joueurs)",
+        "[3] : HEBERGER une partie reseau (jusqu'a 4 PC)",
+        "[4] : REJOINDRE une partie reseau",
+    };
     bool blink = fmodf(G.time, 1.0f) < 0.65f;
-    TextCenter("[1] ou ENTREE : SOLO", cx, y + 228, 30, blink ? (Color){ 255, 220, 120, 255 } : RAYWHITE);
-    TextCenter("[2] : COOP LOCALE (ecran partage)", cx, y + 264, 30, RAYWHITE);
+    for (int i = 0; i < 4; i++)
+        TextCenter(menu[i], cx, y + 185 + i*34, 28, (i == 0 && blink) ? (Color){ 255, 220, 120, 255 } : RAYWHITE);
 
     const char *lines[] = {
         "JOUEUR 1 : ZQSD/WASD, souris, clic G tirer, clic D viser, R recharger, B mode, MAJ sprint, ESPACE sauter",
@@ -280,18 +327,26 @@ void HudDrawTitle(int w, int h)
         "JOUEUR 2 (clavier) : IJKL bouger, fleches viser, CTRL D tirer, MAJ D viser, U recharger, O sauter, H sprint",
         "ECHAP / P / START : pause",
     };
-    for (int i = 0; i < 4; i++) TextCenter(lines[i], cx, y + 320 + i*26, 18, i == 0 ? RAYWHITE : LIGHTGRAY);
+    for (int i = 0; i < 4; i++) TextCenter(lines[i], cx, y + 340 + i*24, 17, i == 0 ? RAYWHITE : LIGHTGRAY);
 
+    if (G.titleMsg[0]) TextCenter(G.titleMsg, cx, h - 80, 22, (Color){ 255, 120, 90, 255 });
     if (G.best > 0)
     {
         snprintf(buf, sizeof(buf), "Meilleur score : %d", G.best);
-        TextCenter(buf, cx, h - 50, 22, LIGHTGRAY);
+        TextCenter(buf, cx, h - 46, 22, LIGHTGRAY);
     }
 }
 
-void HudDrawPause(int w, int h)
+void HudDrawPause(int w, int h, bool network)
 {
     DrawRectangle(0, 0, w, h, (Color){ 0, 0, 0, 150 });
+    if (network)
+    {
+        TextCenter("MENU", w/2, h/3, 70, RAYWHITE);
+        TextCenter("La partie continue pour les autres joueurs !", w/2, h/3 + 80, 22, (Color){ 255, 200, 80, 255 });
+        TextCenter("ECHAP / clic : revenir au jeu      Q : quitter la partie", w/2, h/3 + 120, 24, LIGHTGRAY);
+        return;
+    }
     TextCenter("PAUSE", w/2, h/3, 70, RAYWHITE);
     TextCenter("ECHAP / clic / START : reprendre      Q : menu principal", w/2, h/3 + 90, 24, LIGHTGRAY);
 }
@@ -299,18 +354,79 @@ void HudDrawPause(int w, int h)
 void HudDrawGameOver(int w, int h)
 {
     char buf[128];
-    int cx = w/2, y = h/5;
+    int cx = w/2, y = h/6;
     DrawRectangle(0, 0, w, h, (Color){ 60, 0, 0, 150 });
     TextCenter("GAME OVER", cx, y, 90, (Color){ 255, 70, 50, 255 });
     TextCenter(G.overReason, cx, y + 100, 28, RAYWHITE);
     snprintf(buf, sizeof(buf), "Vague atteinte : %d      Score : %d      Meilleur score : %d", G.wave, G.score, G.best);
     TextCenter(buf, cx, y + 160, 28, GOLD_TEXT);
+    int line = 0;
     for (int i = 0; i < numPlayers; i++)
     {
         const Player *p = &players[i];
+        if (!p->connected) continue;
         if (numPlayers == 1) snprintf(buf, sizeof(buf), "Eliminations : %d      Headshots : %d", p->kills, p->headshots);
         else snprintf(buf, sizeof(buf), "Joueur %d : %d eliminations, %d headshots", i + 1, p->kills, p->headshots);
-        TextCenter(buf, cx, y + 205 + i*30, 22, numPlayers == 1 ? LIGHTGRAY : p->color);
+        TextCenter(buf, cx, y + 205 + line*30, 22, numPlayers == 1 ? LIGHTGRAY : p->color);
+        line++;
     }
-    TextCenter("R / ENTREE : rejouer      ECHAP : menu", cx, y + 290, 24, RAYWHITE);
+    if (NetIsClient()) TextCenter("En attente de l'hote pour rejouer...      ECHAP : quitter", cx, y + 220 + line*30, 24, RAYWHITE);
+    else TextCenter("R / ENTREE : rejouer      ECHAP : menu", cx, y + 220 + line*30, 24, RAYWHITE);
+}
+
+void HudDrawJoin(int w, int h, const char *address)
+{
+    int cx = w/2, y = h/4;
+    DrawRectangle(0, 0, w, h, (Color){ 0, 0, 0, 150 });
+    TextCenter("REJOINDRE UNE PARTIE", cx, y, 56, (Color){ 255, 200, 60, 255 });
+    TextCenter("Adresse IP de l'hote (affichee sur son ecran) :", cx, y + 90, 22, LIGHTGRAY);
+
+    int bw = 420;
+    DrawRectangle(cx - bw/2, y + 125, bw, 50, (Color){ 20, 20, 20, 220 });
+    DrawRectangleLines(cx - bw/2, y + 125, bw, 50, (Color){ 255, 200, 60, 255 });
+    char shown[80];
+    snprintf(shown, sizeof(shown), "%s%s", address, fmodf(G.time, 1.0f) < 0.5f ? "_" : "");
+    TextCenter(shown, cx, y + 137, 28, RAYWHITE);
+
+    NetStatus st = NetGetStatus();
+    if (NetGetRole() == NET_CLIENT && st == NET_CONNECTING) TextCenter("Connexion en cours...", cx, y + 200, 24, (Color){ 255, 220, 120, 255 });
+    else if (NetGetRole() == NET_CLIENT && st == NET_CONNECTED) TextCenter("Connecte ! En attente de l'hote...", cx, y + 200, 24, GREEN);
+    else if (NetError()[0]) TextCenter(NetError(), cx, y + 200, 24, (Color){ 255, 100, 80, 255 });
+    TextCenter("ENTREE : se connecter      ECHAP : retour", cx, y + 250, 22, LIGHTGRAY);
+    TextCenter("Les PC doivent etre sur le meme reseau (ou port UDP 27016 ouvert chez l'hote).", cx, y + 290, 18, GRAY);
+}
+
+void HudDrawLobby(int w, int h)
+{
+    char buf[96];
+    int cx = w/2, y = h/6;
+    bool host = NetGetRole() == NET_HOST;
+    DrawRectangle(0, 0, w, h, (Color){ 0, 0, 0, 150 });
+    TextCenter("PARTIE RESEAU", cx, y, 64, (Color){ 255, 200, 60, 255 });
+
+    if (host)
+    {
+        char ips[4][40];
+        int n = SockLocalIPs(ips, 4);
+        TextCenter("Les autres joueurs choisissent [4] REJOINDRE et tapent :", cx, y + 85, 22, LIGHTGRAY);
+        for (int i = 0; i < n; i++) TextCenter(ips[i], cx, y + 118 + i*36, 34, RAYWHITE);
+        if (n == 0) TextCenter("(adresse IP introuvable)", cx, y + 118, 28, GRAY);
+        y += 118 + (n > 0 ? n : 1)*36;
+        snprintf(buf, sizeof(buf), "(port UDP %d)", NET_PORT);
+        TextCenter(buf, cx, y, 18, GRAY);
+        y += 40;
+    }
+    else y += 100;
+
+    TextCenter("JOUEURS", cx, y, 26, GOLD_TEXT);
+    for (int i = 0; i < MAX_PLAYERS; i++)
+    {
+        const Player *p = &players[i];
+        if (p->connected) snprintf(buf, sizeof(buf), "Joueur %d%s%s", i + 1, i == 0 ? " (hote)" : "", p->local ? " - vous" : "");
+        else snprintf(buf, sizeof(buf), "Joueur %d : en attente...", i + 1);
+        TextCenter(buf, cx, y + 36 + i*30, 22, p->connected ? p->color : GRAY);
+    }
+    y += 36 + MAX_PLAYERS*30 + 20;
+    if (host) TextCenter("ENTREE : lancer la partie      ECHAP : annuler", cx, y, 24, RAYWHITE);
+    else TextCenter("En attente du lancement par l'hote...      ECHAP : quitter", cx, y, 24, RAYWHITE);
 }

@@ -1,11 +1,14 @@
 /*
  * BURGER RUSH : Operation HK416
  * FPS en C avec raylib : un operateur arme d'un HK416 defend son stand de
- * burgers contre des vagues de gloutons affames. Solo ou coop locale.
+ * burgers contre des vagues de gloutons affames. Solo, ecran partage ou
+ * reseau (jusqu'a 4 PC).
  *
  * Organisation du code :
  *   main.c     point d'entree, fenetre et boucle principale
- *   game.c     etats du jeu (titre, partie, pause, game over), ecran partage
+ *   game.c     etats du jeu (titre, lobby, partie, pause, game over), ecran partage
+ *   net.c      multijoueur reseau : protocole hote / clients
+ *   netsock.c  sockets UDP (Windows / Linux / macOS)
  *   player.c   commandes, deplacement, vie et camera des joueurs
  *   weapon.c   HK416 : tir, recul, rechargement, modele 3D
  *   enemy.c    gloutons : IA, degats, modele 3D

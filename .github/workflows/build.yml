@@ -1,0 +1,104 @@
+name: Build
+
+# Compile le jeu pour macOS (Apple Silicon), Windows et Linux.
+# - Sur chaque pull request : les executables sont disponibles dans l'onglet
+#   Actions (section "Artifacts" du run).
+# - Sur chaque push sur main : ils sont publies dans la release "latest".
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos-arm64:
+    name: macOS (Apple Silicon)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compiler (raylib telechargee par CMake)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          cmake --build build --config Release -j 4
+
+      - name: Creer BurgerRush.app
+        run: |
+          sh scripts/make_macos_app.sh build/burger_rush dist
+          file dist/BurgerRush.app/Contents/MacOS/BurgerRush
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BurgerRush-macOS-arm64
+          path: dist/BurgerRush-macOS-arm64.zip
+
+  windows:
+    name: Windows (x64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer MinGW
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+
+      - name: Compiler raylib 5.5 pour Windows
+        run: |
+          git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git raylib-win
+          make -C raylib-win/src PLATFORM=PLATFORM_DESKTOP OS=Windows_NT CC=x86_64-w64-mingw32-gcc AR=x86_64-w64-mingw32-ar -j 4
+
+      - name: Compiler le jeu
+        run: |
+          make windows RAYLIB_WIN_PATH=raylib-win
+          mkdir -p dist && cp release/BurgerRush.exe dist/BurgerRush-windows-x64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BurgerRush-windows-x64
+          path: dist/BurgerRush-windows-x64.exe
+
+  linux:
+    name: Linux (x64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependances
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl1-mesa-dev
+
+      - name: Compiler
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j 4
+          mkdir -p dist && tar -czf dist/BurgerRush-linux-x64.tar.gz -C build burger_rush
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BurgerRush-linux-x64
+          path: dist/BurgerRush-linux-x64.tar.gz
+
+  release:
+    name: Publier la release "latest"
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [macos-arm64, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Remplacer la release "latest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest dist/* --target "${{ github.sha }}" \
+            --title "BURGER RUSH - derniere version" \
+            --notes "Executables compiles automatiquement depuis main : macOS Apple Silicon (.zip contenant BurgerRush.app), Windows (.exe), Linux (.tar.gz)."
