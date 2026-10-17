@@ -24,9 +24,9 @@
 #define NET_STATE_RATE     60.0f   // etats des joueurs envoyes par les clients, par seconde
 #define NET_TIMEOUT        6.0f    // secondes sans nouvelles avant deconnexion
 
-// Burgers du stand
-#define MAX_BURGERS    12
-#define START_BURGERS  12
+// Poussins du stand
+#define MAX_CHICKS    12
+#define START_CHICKS  12
 
 // Joueur
 #define EYE_HEIGHT     1.65f
@@ -49,15 +49,15 @@
 #define BULLET_DAMAGE  30.0f
 #define HEADSHOT_MULT  3.0f
 
-// Harpon : tue et projette le glouton touche en un coup
+// Harpon : tue et projette le mercenaire touche en un coup
 #define HARPOON_START      6       // harpons en reserve au depart (+1 charge)
 #define HARPOON_MAX        12
 #define HARPOON_RELOAD     1.3f
 #define HARPOON_SPEED      55.0f   // m/s
 #define HARPOON_GRAVITY    3.0f
-#define HARPOON_LAUNCH     16.0f   // vitesse horizontale donnee au glouton harponne
+#define HARPOON_LAUNCH     16.0f   // vitesse horizontale donnee au mercenaire harponne
 #define HARPOON_LIFT       8.0f    // ... et vers le haut
-#define HARPOON_BOWL_DMG   60.0f   // degats aux gloutons percutes en vol
+#define HARPOON_BOWL_DMG   60.0f   // degats aux mercenaires percutes en vol
 #define SWITCH_TIME        0.35f   // changement d'arme
 
 // Camera

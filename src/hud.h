@@ -17,7 +17,7 @@ void FeedUpdate(float dt);
 
 // HUD personnel, dessine dans la vue (w x h) du joueur.
 void HudDrawPlayer(const Player *p, int w, int h, bool showName);
-// Infos communes (burgers, vague, score, annonces) sur tout l'ecran.
+// Infos communes (poussins, vague, score, annonces) sur tout l'ecran.
 void HudDrawShared(int w, int h, bool split);
 
 // Ecrans (dessines en unites virtuelles, voir ui.h). Les rectangles des

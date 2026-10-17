@@ -1,5 +1,5 @@
 /*
- * pickup.h - Bonus laches par les gloutons : munitions et salade (soin).
+ * pickup.h - Bonus laches par les mercenaires : munitions et salade (soin).
  */
 #ifndef PICKUP_H
 #define PICKUP_H

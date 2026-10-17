@@ -1,5 +1,5 @@
 /*
- * waves.c - Une vague = un nombre fixe de gloutons qui apparaissent peu a
+ * waves.c - Une vague = un nombre fixe de mercenaires qui apparaissent peu a
  * peu (avec un boss toutes les 5 vagues). Quand tout est mort : pause de
  * quelques secondes, recompenses, puis vague suivante.
  */
@@ -48,7 +48,7 @@ static EnemyType PickType(int wave)
 static void GiveRewards(void)
 {
     G.score += 250*G.wave;
-    G.burgers = (G.burgers + 2 > MAX_BURGERS) ? MAX_BURGERS : G.burgers + 2;
+    G.chicks = (G.chicks + 2 > MAX_CHICKS) ? MAX_CHICKS : G.chicks + 2;
     for (int i = 0; i < numPlayers; i++)
     {
         Player *p = &players[i];

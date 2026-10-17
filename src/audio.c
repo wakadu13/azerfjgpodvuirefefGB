@@ -28,7 +28,7 @@ static float SoundDuration(SndId id)
         case SND_CLICK: return 0.08f;
         case SND_EMPTY: return 0.05f;
         case SND_HIT:   return 0.2f;
-        case SND_NOM:   return 0.5f;
+        case SND_CHIRP: return 0.45f;
         case SND_HURT:  return 0.35f;
         case SND_KILL:  return 0.35f;
         case SND_HORN:  return 1.4f;
@@ -56,10 +56,12 @@ static float SoundSample(SndId id, float t, float dur, float nz, float lp, float
             return sinf(2*PI*3000.0f*t)*expf(-t*300.0f)*0.5f + nz*expf(-t*500.0f)*0.3f;
         case SND_HIT:
             return lp2*expf(-t*20.0f)*2.2f + sinf(2*PI*(220.0f - 500.0f*t)*t)*expf(-t*18.0f)*0.6f;
-        case SND_NOM:
+        case SND_CHIRP:   // "piou piou piou" affole d'un poussin
         {
-            float chew = 0.5f + 0.5f*sinf(2*PI*7.0f*t);
-            return (sinf(2*PI*140.0f*t) + 0.5f*sinf(2*PI*283.0f*t))*chew*0.35f*(1.0f - t/dur) + lp2*chew*0.8f;
+            float tc = fmodf(t, 0.15f);
+            if (tc > 0.1f) return 0.0f;
+            float phase = 3900.0f*tc - 4500.0f*tc*tc;   // glissando descendant
+            return sinf(2*PI*phase)*sinf(PI*tc/0.1f)*0.4f*(1.0f - 0.3f*t/dur);
         }
         case SND_HURT:
             return sinf(2*PI*(140.0f - 120.0f*t)*t)*expf(-t*7.0f)*0.8f + lp2*expf(-t*15.0f)*0.9f;

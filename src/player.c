@@ -329,7 +329,7 @@ void PlayerHurt(Player *p, float dmg)
     p->alive = false;
     p->deadT = 0;
     if (PlayersAlive() == 0)
-        GameOver(PlayersConnected() == 1 ? "Vous avez ete devore par les gloutons..." : "Toute l'escouade a ete devoree...");
+        GameOver(PlayersConnected() == 1 ? "Vous avez ete abattu par les mercenaires..." : "Toute l'escouade est tombee...");
     else
         FeedAdd(RED, "%sest tombe ! Retour a la prochaine vague", PlayerTag(p));
 }

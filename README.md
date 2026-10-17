@@ -1,6 +1,6 @@
-# 🍔 BURGER RUSH : Opération HK416
+# 🐥 BURGER RUSH : Opération HK416
 
-FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (écran partagé) ou **jusqu'à 4 en réseau**. Disponible pour **Windows**, **macOS (Apple Silicon)**, **Linux**, **Android** et **iOS**. Vous incarnez à la première personne un opérateur armé d'un **HK416** qui défend son stand de burgers contre des vagues de gloutons obèses bien décidés à tout dévorer.
+FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (écran partagé) ou **jusqu'à 4 en réseau**. Disponible pour **Windows**, **macOS (Apple Silicon)**, **Linux**, **Android** et **iOS**. Vous incarnez à la première personne un opérateur armé d'un **HK416** qui protège ses **poussins** contre des vagues de **mercenaires en treillis olive**, le visage peint en vert et les yeux cernés de noir, une **chaîne en métal** autour du cou, qui avancent comme des zombies, bras tendus, bien décidés à tous les enlever.
 
 ![Aperçu](docs/apercu.png)
 
@@ -8,21 +8,22 @@ Tout est généré par le code (modèles 3D, sons, textures) : **aucun fichier e
 
 ## 🎮 Le jeu
 
-- Au centre de l'arène se trouve un **stand de burgers** (12 au départ).
-- Les gloutons entrent par les **4 portes** de l'arène et foncent vers le comptoir. Chaque burger mangé les rend **plus gros et plus résistants**.
+- Au centre de l'arène, **12 poussins** sautillent sur le comptoir du stand.
+- Les mercenaires entrent par les **4 portes** de l'arène et foncent vers le comptoir pour attraper les poussins. Chaque poussin enlevé les rend **plus costauds et plus résistants**.
+- Un mercenaire qui brandit un poussin met encore un instant à l'emporter : **abattez-le à temps et le poussin est sauvé**.
 - Si vous vous approchez trop d'eux, ils vous attaquent.
-- **Game over** si vous mourez **ou** si tous les burgers sont mangés.
-- Entre deux vagues : +2 burgers, +90 munitions, +25 PV.
-- Les ennemis abattus lâchent parfois des **caisses de munitions** ou une **salade** (soin, ils n'en veulent pas).
+- **Game over** si vous mourez **ou** si tous les poussins sont enlevés.
+- Entre deux vagues : +2 poussins, +90 munitions, +25 PV.
+- Les ennemis abattus lâchent parfois des **caisses de munitions** ou une **salade** (soin).
 
 ### Les ennemis
 
 | Ennemi | Description |
 |---|---|
-| **Le Gourmand** | L'ennemi de base. |
-| **Le Pressé** | Plus petit, rapide, et il vous fonce dessus. Apparaît dès la vague 2. |
-| **Le Glouton** | Énorme, lent, très résistant. Dès la vague 3. |
-| **LE ROI DU GRAS** | Boss couronné toutes les 5 vagues. |
+| **Le Mercenaire** | L'ennemi de base : treillis olive aux manches retroussées, brassard orange taché de sang, épaulettes rouges, béret glissé sous l'épaulette ou foulard rouge et noir, visage peint (3 styles), chaîne autour du cou. |
+| **L'Éclaireur** | Plus petit, rapide, foulard rouge et noir, et il vous fonce dessus en courant. Apparaît dès la vague 2. |
+| **Le Colosse** | Énorme, lent, très résistant, chaîne en bandoulière en plus et cadenas. Dès la vague 3. |
+| **LE CHEF DE GUERRE** | Boss géant au treillis plus sombre, béret sur la tête et cadenas doré, toutes les 5 vagues. |
 
 ### Le HK416
 
@@ -35,8 +36,8 @@ Tout est généré par le code (modèles 3D, sons, textures) : **aucun fichier e
 ### Le harpon
 
 - Deuxième arme : **2**, **E** ou la molette (**1** pour revenir au HK416), **RB** à la manette, bouton **HARPON** sur mobile.
-- Tire une flèche : le glouton touché **meurt en un coup et est projeté** à la renverse en tournoyant, la flèche plantée dans le ventre.
-- En vol, il **percute les autres gloutons** (gros dégâts, il peut même les faire décoller).
+- Tire une flèche : le mercenaire touché **meurt en un coup et est projeté** à la renverse en tournoyant, la flèche plantée dans le ventre.
+- En vol, il **percute les autres mercenaires** (gros dégâts, il peut même les faire décoller).
 - 1 harpon chargé + 6 en réserve. +3 à chaque vague, +1 par caisse de munitions. 1,3 s pour recharger.
 
 ## 👥 Multijoueur
@@ -52,9 +53,9 @@ Au menu :
 
 Dans tous les modes à plusieurs :
 
-- Les gloutons s'en prennent au joueur le plus proche ; ils sont plus nombreux (+50 % par joueur supplémentaire) et plus résistants.
+- Les mercenaires s'en prennent au joueur le plus proche ; ils sont plus nombreux (+50 % par joueur supplémentaire) et plus résistants.
 - Un joueur à 0 PV est **à terre** et revient au début de la vague suivante.
-- Game over si tous les joueurs sont à terre ou si tous les burgers sont mangés.
+- Game over si tous les joueurs sont à terre ou si tous les poussins sont enlevés.
 - Le score est commun, les éliminations sont comptées par joueur. Chaque soldat porte une bande de couleur sur le casque (bleu, orange, vert, violet).
 
 ### Écran partagé
@@ -170,16 +171,17 @@ Une manette Bluetooth fonctionne aussi.
 | `src/netsock.c` | Sockets UDP pour Windows, macOS et Linux |
 | `src/player.c` | Commandes (clavier/souris, manette, 2ᵉ clavier), déplacements, vie, caméra, modèle du coéquipier |
 | `src/weapon.c` | HK416 : tir, recul, rechargement, modèle 3D et mains |
-| `src/enemy.c` | Gloutons : IA, dégâts, modèle 3D |
+| `src/enemy.c` | Mercenaires : apparition, IA, dégâts |
+| `src/enemymodel.c` | Modèle 3D des mercenaires : treillis, visage peint, brassard, chaînes (un seul mesh généré par carrure), démarche de zombie |
 | `src/waves.c` | Enchaînement des vagues et récompenses |
 | `src/pickup.c` | Bonus (munitions, salade) |
-| `src/map.c` | Arène, stand de burgers, collisions |
+| `src/map.c` | Arène, stand des poussins, collisions |
 | `src/harpoon.c` | Flèches du harpon (projectiles) |
 | `src/effects.c` | Particules et traçantes |
 | `src/hud.c` | Interface 2D et écrans |
 | `src/ui.c` | Échelle de l'interface et boutons (souris / doigt) |
 | `src/touch.c` | Contrôles tactiles (mobile) |
-| `src/render.c` | Shader et primitives 3D (cube, sphère, cylindre) |
+| `src/render.c` | Shader (dont l'usure du treillis) et primitives 3D (cube, sphère, cylindre), poussin |
 | `src/audio.c` | Sons générés par le code |
 | `src/config.h` | Toutes les constantes de réglage (vitesses, dégâts, munitions…) |
 
