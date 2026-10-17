@@ -22,22 +22,33 @@ echo "plateforme  : $PLATFORM_JAR"
 rm -rf "$OUT"
 mkdir -p "$OUT/apk"
 
+GLUE="$NDK/sources/android/native_app_glue"
+RAYLIB_MODULES="rcore rshapes rtextures rtext rmodels raudio utils"
+
 for ABI in arm64-v8a x86_64; do
     case $ABI in
-        arm64-v8a) ARCH=arm64;  TRIPLE=aarch64-linux-android ;;
-        x86_64)    ARCH=x86_64; TRIPLE=x86_64-linux-android ;;
+        arm64-v8a) TRIPLE=aarch64-linux-android ;;
+        x86_64)    TRIPLE=x86_64-linux-android ;;
     esac
+    # Le compilateur du NDK porte la cible Android dans son nom (ex. aarch64-linux-android24-clang).
+    # raylib est compile ici directement : son Makefile 5.5 ajoute "-target aarch64", qui
+    # ecrase cette cible avec les NDK recents et fait inclure les en-tetes Linux du PC.
+    CC="$TOOLCHAIN/bin/${TRIPLE}${API}-clang"
+    OBJ="$OUT/obj-$ABI"
+    mkdir -p "$OBJ" "$OUT/apk/lib/$ABI"
+    COMMON="-O2 -fPIC -ffunction-sections -funwind-tables -fstack-protector-strong"
+
     echo "=== raylib pour $ABI"
-    make -C "$RAYLIB/src" clean > /dev/null
-    make -C "$RAYLIB/src" PLATFORM=PLATFORM_ANDROID ANDROID_NDK="$NDK" ANDROID_ARCH=$ARCH ANDROID_API_VERSION=$API -j4
+    for m in $RAYLIB_MODULES; do
+        $CC -std=gnu99 $COMMON -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 \
+            -I"$RAYLIB/src" -I"$GLUE" -c "$RAYLIB/src/$m.c" -o "$OBJ/rl_$m.o"
+    done
+    $CC -std=gnu99 $COMMON -I"$GLUE" -c "$GLUE/android_native_app_glue.c" -o "$OBJ/android_native_app_glue.o"
 
     echo "=== jeu pour $ABI"
-    mkdir -p "$OUT/apk/lib/$ABI"
-    "$TOOLCHAIN/bin/${TRIPLE}${API}-clang" -std=c99 -O2 -fPIC -shared -Wall \
-        -DBR_MOBILE -DPLATFORM_ANDROID \
-        -I"$RAYLIB/src" -I"$NDK/sources/android/native_app_glue" \
-        src/*.c -o "$OUT/apk/lib/$ABI/libmain.so" \
-        -L"$RAYLIB/src" -lraylib -llog -landroid -lEGL -lGLESv2 -lOpenSLES -lm \
+    $CC -std=c99 $COMMON -shared -Wall -DBR_MOBILE \
+        -I"$RAYLIB/src" src/*.c "$OBJ"/*.o -o "$OUT/apk/lib/$ABI/libmain.so" \
+        -llog -landroid -lEGL -lGLESv2 -lOpenSLES -lm \
         -u ANativeActivity_onCreate -Wl,--no-undefined
 done
 
