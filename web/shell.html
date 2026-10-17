@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Zeffalie Come Back</title>
+<link rel="icon" type="image/png" href="icon.png">
+<style>
+  /* Le jeu occupe toute la page, sans marges ni barres de defilement */
+  :root { --bg: #05081a; --text: #f2f2f2; --accent: #ffc83c; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+               font-family: system-ui, sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; outline: none;
+           touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  /* Ecran de chargement */
+  #loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+             justify-content: center; gap: 16px; background: var(--bg); text-align: center; padding: 16px; }
+  #loading img { width: 160px; height: 160px; border-radius: 32px; }
+  #loading h1 { margin: 0; color: var(--accent); font-size: clamp(24px, 6vw, 44px); letter-spacing: 2px; }
+  #bar { width: min(320px, 80vw); height: 8px; background: #1c2440; border-radius: 4px; overflow: hidden; }
+  #bar div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  /* Telephone tenu en portrait : on demande de le tourner (le jeu est en paysage) */
+  #rotate { display: none; position: fixed; inset: 0; background: var(--bg); align-items: center;
+            justify-content: center; text-align: center; padding: 24px; font-size: 20px; z-index: 10; }
+  @media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
+</style>
+</head>
+<body>
+<div id="loading">
+  <img src="icon.png" alt="">
+  <h1>ZEFFALIE COME BACK</h1>
+  <div id="bar"><div></div></div>
+  <div id="status">Chargement...</div>
+</div>
+<div id="rotate">Tourne ton telephone en mode paysage pour jouer 🔄</div>
+<canvas id="canvas" tabindex="-1"></canvas>
+<script>
+  var canvas = document.getElementById('canvas');
+  // Clic droit = viser : pas de menu contextuel du navigateur
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  // Les fleches, l'espace... ne doivent pas faire defiler la page
+  window.addEventListener('keydown', function (e) {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Tab'].indexOf(e.key) >= 0) e.preventDefault();
+  });
+  // Plein ecran sur telephone au premier toucher (cache la barre d'adresse)
+  canvas.addEventListener('touchend', function () {
+    var el = document.documentElement;
+    if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(function () {});
+  }, { once: true });
+  var Module = {
+    canvas: canvas,
+    print: function (t) { console.log(t); },
+    setStatus: function (t) {
+      var m = t.match(/\((\d+(\.\d+)?)\/(\d+)\)/);
+      if (m) document.querySelector('#bar div').style.width = (100 * m[1] / m[3]) + '%';
+      if (t) document.getElementById('status').textContent = t.replace(/\(.*\)/, '');
+    },
+    onRuntimeInitialized: function () {
+      document.getElementById('loading').style.display = 'none';
+      canvas.focus();
+    }
+  };
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

@@ -227,9 +227,12 @@ static void UpdateTitle(void)
     if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ONE) || IsKeyPressed(KEY_KP_1) ||
         AnyGamepadPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN)) ChooseTitle(TITLE_SOLO);
     else if (!TouchMode() && (IsKeyPressed(KEY_TWO) || IsKeyPressed(KEY_KP_2) || AnyGamepadPressed(GAMEPAD_BUTTON_MIDDLE_RIGHT))) ChooseTitle(TITLE_SPLIT);
+#if !defined(BR_WEB)
+    // (dans le navigateur : ni reseau, ni "quitter" ; on ferme simplement l'onglet)
     else if (IsKeyPressed(KEY_THREE) || IsKeyPressed(KEY_KP_3)) ChooseTitle(TITLE_HOST);
     else if (IsKeyPressed(KEY_FOUR) || IsKeyPressed(KEY_KP_4)) ChooseTitle(TITLE_JOIN);
     else if (IsKeyPressed(KEY_ESCAPE)) G.quit = true;
+#endif
 }
 
 // Ecran REJOINDRE. Une fois connecte, c'est l'hote qui fait passer le
@@ -337,6 +340,16 @@ static void UpdatePlay(float dt)
     // (Q ou A pour quitter : raylib repere les touches par leur position QWERTY,
     //  accepter les deux fait marcher la touche marquee Q en AZERTY comme en QWERTY)
     else if (MenuPressed()) { G.state = ST_PAUSE; CaptureCursor(false); return; }
+#if defined(BR_WEB)
+    // Navigateur : Echap libere d'abord la souris (le jeu ne voit pas la
+    // touche). Quand la souris vient d'etre liberee, on met en pause.
+    else if (!TouchMode())
+    {
+        static bool locked = false;
+        if (IsCursorHidden()) locked = true;
+        else if (locked) { locked = false; G.state = ST_PAUSE; CaptureCursor(false); return; }
+    }
+#endif
 
     UpdateWorld(dt);
 }
@@ -345,6 +358,7 @@ static void UpdatePlay(float dt)
 void GameUpdate(float dt)
 {
     G.time += dt;
+    UiUpdate();       // suivi des doigts (boutons au toucher dans le navigateur)
     NetReceive(dt);   // applique d'abord ce qui est arrive par le reseau
 
     // Client : connexion perdue ou refusee

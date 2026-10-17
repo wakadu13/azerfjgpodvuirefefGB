@@ -116,6 +116,21 @@ Avec deux manettes, la deuxième peut aussi contrôler le joueur 1.
 
 ## ⬇️ Télécharger
 
+### Navigateur (PC, Mac, Linux, téléphone, tablette)
+
+Le jeu tourne aussi **dans un navigateur** (Chrome, Edge, Firefox, Safari), sans rien installer :
+
+- **Ordinateur** : clavier + souris, comme la version PC. Cliquez dans le jeu pour capturer la souris ; **Échap** la libère et met en pause.
+- **Téléphone / tablette** : commandes tactiles détectées automatiquement, en **paysage** ; le jeu passe en plein écran au premier toucher.
+- Modes **solo** et **écran partagé** ; le **réseau** n'est pas disponible dans le navigateur (les navigateurs n'autorisent pas l'UDP).
+
+Mise en ligne : à chaque mise à jour de `main`, le site est compilé (`ZeffalieComeBack-web.zip` dans la release) et publié sur **GitHub Pages** si c'est activé (*Settings → Pages → Source : GitHub Actions* ; sur un dépôt privé, GitHub Pages demande un compte payant). Le contenu du zip peut aussi être déposé sur n'importe quel hébergeur web (itch.io, Netlify…). Pour essayer en local :
+
+```bash
+bash scripts/build_web.sh <raylib compilée pour le web> build-web   # emcc dans le PATH
+python3 -m http.server -d build-web 8000                            # puis http://localhost:8000
+```
+
 ### Windows
 
 **[`release/ZeffalieComeBack.exe`](release/ZeffalieComeBack.exe)** : autonome (aucune DLL à installer), double-cliquez dessus.

@@ -24,6 +24,7 @@ void UiEnd(void);            // fin du dessin en unites virtuelles (retour aux p
 
 // Bouton : dessin, et "relache dessus" (clic ou doigt) pour l'activer
 void UiDrawButton(Rectangle r, const char *label, Color accent);
+void UiUpdate(void);   // a appeler une fois par image (suivi des doigts pour les boutons)
 bool UiButtonHit(Rectangle r);
 
 #endif

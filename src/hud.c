@@ -470,8 +470,11 @@ int HudTitleChoices(TitleChoice *out)
     int n = 0;
     out[n++] = TITLE_SOLO;
     if (!TouchMode()) out[n++] = TITLE_SPLIT;   // pas d'ecran partage sur telephone
+#if !defined(BR_WEB)
+    // Pas de reseau dans le navigateur : il n'autorise pas les sockets UDP
     out[n++] = TITLE_HOST;
     out[n++] = TITLE_JOIN;
+#endif
     return n;
 }
 
