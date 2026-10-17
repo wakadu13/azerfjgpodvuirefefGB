@@ -1,0 +1,2 @@
+2026-10-17 16:44:58.948 ZeffalieComeBack[16535:38229] Unbalanced calls to begin/end appearance transitions for <SDL_uikitviewcontroller: 0x10381ae00>.
+2026-10-17 16:44:58.953 ZeffalieComeBack[16535:38229] Unbalanced calls to begin/end appearance transitions for <SDL_uikitviewcontroller: 0x10381ae00>.

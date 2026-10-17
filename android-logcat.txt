@@ -1,0 +1,92 @@
+--------- beginning of main
+--------- beginning of system
+--------- beginning of kernel
+10-17 16:42:19.530  2334  2359 I raylib  : Initializing raylib 5.5
+10-17 16:42:19.530  2334  2359 I raylib  : Platform backend: ANDROID
+10-17 16:42:19.530  2334  2359 I raylib  : Supported raylib modules:
+10-17 16:42:19.530  2334  2359 I raylib  :     > rcore:..... loaded (mandatory)
+10-17 16:42:19.530  2334  2359 I raylib  :     > rlgl:...... loaded (mandatory)
+10-17 16:42:19.530  2334  2359 I raylib  :     > rshapes:... loaded (optional)
+10-17 16:42:19.530  2334  2359 I raylib  :     > rtextures:. loaded (optional)
+10-17 16:42:19.530  2334  2359 I raylib  :     > rtext:..... loaded (optional)
+10-17 16:42:19.530  2334  2359 I raylib  :     > rmodels:... loaded (optional)
+10-17 16:42:19.530  2334  2359 I raylib  :     > raudio:.... loaded (optional)
+10-17 16:42:19.530  2334  2359 I raylib  : ANDROID: Window orientation set as landscape
+10-17 16:42:19.530  2334  2359 W raylib  : ANDROID: Window orientation changed to portrait
+10-17 16:42:19.530  2334  2359 I raylib  : PLATFORM: ANDROID: Initialized successfully
+10-17 16:42:19.765  2334  2359 I raylib  : DISPLAY: Upscaling required: Screen size (0x0) smaller than display size (2340x1080)
+10-17 16:42:19.892  2334  2359 I raylib  : DISPLAY: Device initialized successfully
+10-17 16:42:19.892  2334  2359 I raylib  :     > Display size: 2340 x 1080
+10-17 16:42:19.892  2334  2359 I raylib  :     > Screen size:  2340 x 1080
+10-17 16:42:19.892  2334  2359 I raylib  :     > Render size:  2340 x 1080
+10-17 16:42:19.892  2334  2359 I raylib  :     > Viewport offsets: 0, 0
+10-17 16:42:19.892  2334  2359 I raylib  : GL: Supported extensions count: 49
+10-17 16:42:19.893  2334  2359 I raylib  : GL: OpenGL device information:
+10-17 16:42:19.893  2334  2359 I raylib  :     > Vendor:   Google (Google Inc.)
+10-17 16:42:19.893  2334  2359 I raylib  :     > Renderer: Android Emulator OpenGL ES Translator (Google SwiftShader)
+10-17 16:42:19.893  2334  2359 I raylib  :     > Version:  OpenGL ES 3.0 (OpenGL ES 3.0 SwiftShader 4.0.0.1)
+10-17 16:42:19.893  2334  2359 I raylib  :     > GLSL:     OpenGL ES GLSL ES 3.00
+10-17 16:42:19.893  2334  2359 I raylib  : GL: VAO extension detected, VAO functions loaded successfully
+10-17 16:42:19.893  2334  2359 I raylib  : GL: NPOT textures extension detected, full NPOT textures supported
+10-17 16:42:19.893  2334  2359 I raylib  : GL: ETC1 compressed textures supported
+10-17 16:42:19.894  2334  2359 I raylib  : TEXTURE: [ID 1] Texture loaded successfully (1x1 | R8G8B8A8 | 1 mipmaps)
+10-17 16:42:19.894  2334  2359 I raylib  : TEXTURE: [ID 1] Default texture loaded successfully
+10-17 16:42:19.896  2334  2359 I raylib  : SHADER: [ID 1] Vertex shader compiled successfully
+10-17 16:42:19.896  2334  2359 I raylib  : SHADER: [ID 2] Fragment shader compiled successfully
+10-17 16:42:19.897  2334  2359 I raylib  : SHADER: [ID 3] Program shader loaded successfully
+10-17 16:42:19.897  2334  2359 I raylib  : SHADER: [ID 3] Default shader loaded successfully
+10-17 16:42:19.898  2334  2359 I raylib  : RLGL: Render batch vertex buffers loaded successfully in RAM (CPU)
+10-17 16:42:19.906  2334  2359 I raylib  : RLGL: Render batch vertex buffers loaded successfully in VRAM (GPU)
+10-17 16:42:19.906  2334  2359 I raylib  : RLGL: Default OpenGL state initialized successfully
+10-17 16:42:19.909  2334  2359 I raylib  : TEXTURE: [ID 2] Texture loaded successfully (128x128 | GRAY_ALPHA | 1 mipmaps)
+10-17 16:42:19.909  2334  2359 I raylib  : FONT: Default font loaded successfully (224 glyphs)
+10-17 16:42:19.911  2334  2359 I raylib  : TEXTURE: [ID 3] Texture loaded successfully (1x1 | R8G8B8A8 | 1 mipmaps)
+10-17 16:42:19.911  2334  2359 I raylib  : TEXTURE: [ID 3] Default texture loaded successfully
+10-17 16:42:19.911  2334  2359 I raylib  : SHADER: [ID 4] Vertex shader compiled successfully
+10-17 16:42:19.912  2334  2359 I raylib  : SHADER: [ID 5] Fragment shader compiled successfully
+10-17 16:42:19.915  2334  2359 I raylib  : SHADER: [ID 6] Program shader loaded successfully
+10-17 16:42:19.915  2334  2359 I raylib  : SHADER: [ID 6] Default shader loaded successfully
+10-17 16:42:19.915  2334  2359 I raylib  : RLGL: Render batch vertex buffers loaded successfully in RAM (CPU)
+10-17 16:42:19.917  2334  2359 I raylib  : RLGL: Render batch vertex buffers loaded successfully in VRAM (GPU)
+10-17 16:42:19.917  2334  2359 I raylib  : RLGL: Default OpenGL state initialized successfully
+10-17 16:42:19.919  2334  2359 I raylib  : TEXTURE: [ID 4] Texture loaded successfully (128x128 | GRAY_ALPHA | 1 mipmaps)
+10-17 16:42:19.919  2334  2359 I raylib  : FONT: Default font loaded successfully (224 glyphs)
+10-17 16:42:19.919  2334  2359 I raylib  : SYSTEM: Working Directory: /
+10-17 16:42:19.919  2334  2359 I raylib  : TIMER: Target time per frame: 16.667 milliseconds
+10-17 16:42:19.972  2334  2359 I raylib  : AUDIO: Device initialized successfully
+10-17 16:42:19.972  2334  2359 I raylib  :     > Backend:       miniaudio | OpenSL|ES
+10-17 16:42:19.972  2334  2359 I raylib  :     > Format:        32-bit IEEE Floating Point -> 32-bit IEEE Floating Point
+10-17 16:42:19.972  2334  2359 I raylib  :     > Channels:      2 -> 2
+10-17 16:42:19.972  2334  2359 I raylib  :     > Sample rate:   48000 -> 48000
+10-17 16:42:19.972  2334  2359 I raylib  :     > Periods size:  1440
+10-17 16:42:19.989  2334  2359 I raylib  : STREAM: Initialized successfully (32000 Hz, 16 bit, Mono)
+10-17 16:42:19.989  2334  2359 I raylib  : FILEIO: Music data loaded successfully
+10-17 16:42:19.989  2334  2359 I raylib  :     > Sample rate:   32000 Hz
+10-17 16:42:19.989  2334  2359 I raylib  :     > Sample size:   16 bits
+10-17 16:42:19.989  2334  2359 I raylib  :     > Channels:      1 (Mono)
+10-17 16:42:19.989  2334  2359 I raylib  :     > Total frames:  7296000
+10-17 16:42:20.007  2334  2359 I raylib  : STREAM: Initialized successfully (22050 Hz, 16 bit, Mono)
+10-17 16:42:20.007  2334  2359 I raylib  : FILEIO: Music data loaded successfully
+10-17 16:42:20.007  2334  2359 I raylib  :     > Sample rate:   22050 Hz
+10-17 16:42:20.007  2334  2359 I raylib  :     > Sample size:   16 bits
+10-17 16:42:20.007  2334  2359 I raylib  :     > Channels:      1 (Mono)
+10-17 16:42:20.007  2334  2359 I raylib  :     > Total frames:  460173
+10-17 16:42:20.009  2334  2359 I raylib  : SHADER: [ID 7] Vertex shader compiled successfully
+10-17 16:42:20.012  2334  2359 I raylib  : SHADER: [ID 8] Fragment shader compiled successfully
+10-17 16:42:20.017  2334  2359 I raylib  : SHADER: [ID 9] Program shader loaded successfully
+10-17 16:42:20.020  2334  2359 I raylib  : VAO: [ID 3] Mesh uploaded successfully to VRAM (GPU)
+10-17 16:42:20.021  2334  2359 I raylib  : VAO: [ID 4] Mesh uploaded successfully to VRAM (GPU)
+10-17 16:42:20.021  2334  2359 I raylib  : VAO: [ID 5] Mesh uploaded successfully to VRAM (GPU)
+10-17 16:42:20.813  2334  2359 I raylib  : VAO: [ID 6] Mesh uploaded successfully to VRAM (GPU)
+10-17 16:42:19.231   513   571 V BackupManagerService: [UserID:0] restoreAtInstall pkg=io.github.wakadu13.zeffaliecomeback token=1 restoreSet=0
+10-17 16:42:19.235  1407  1407 I MediaProvider: Invalidating LocalCallingIdentity cache for package io.github.wakadu13.zeffaliecomeback. Reason: package android.intent.action.PACKAGE_ADDED
+10-17 16:42:19.237   513   804 W BroadcastQueue: Background execution not allowed: receiving Intent { act=android.intent.action.PACKAGE_ADDED dat=package:io.github.wakadu13.zeffaliecomeback flg=0x4000010 (has extras) } to com.android.packageinstaller/.PackageInstalledReceiver
+10-17 16:42:19.237   710   710 D AvrcpMediaPlayerList: Name of package changed: io.github.wakadu13.zeffaliecomeback
+10-17 16:42:19.239   513   555 W BroadcastQueue: Background execution not allowed: receiving Intent { act=android.intent.action.PACKAGE_ADDED dat=package:io.github.wakadu13.zeffaliecomeback flg=0x4000010 (has extras) } to com.android.gallery3d/.app.PackagesMonitor
+10-17 16:42:19.292   513  1543 I ActivityTaskManager: START u0 {flg=0x10000000 cmp=io.github.wakadu13.zeffaliecomeback/android.app.NativeActivity} from uid 0
+10-17 16:42:19.345   513   556 I ActivityManager: Start proc 2334:io.github.wakadu13.zeffaliecomeback/u0a130 for pre-top-activity {io.github.wakadu13.zeffaliecomeback/android.app.NativeActivity}
+10-17 16:42:19.698   513   554 D ArtManagerInternalImpl: /data/misc/iorapd/io.github.wakadu13.zeffaliecomeback/1/android.app.NativeActivity/compiled_traces/compiled_trace.pb doesn't exist
+10-17 16:42:19.711   513   554 I ActivityTaskManager: Displayed io.github.wakadu13.zeffaliecomeback/android.app.NativeActivity: +333ms
+10-17 16:42:47.871  2393  2393 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+10-17 16:42:47.872   272   272 I tombstoned: received crash request for pid 2334
+10-17 16:42:47.872  2393  2393 I crash_dump64: performing dump of process 2334 (target tid = 2334)

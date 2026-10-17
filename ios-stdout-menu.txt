@@ -1,0 +1,68 @@
+INFO: Initializing raylib 5.5
+INFO: Platform backend: DESKTOP (SDL)
+INFO: Supported raylib modules:
+INFO:     > rcore:..... loaded (mandatory)
+INFO:     > rlgl:...... loaded (mandatory)
+INFO:     > rshapes:... loaded (optional)
+INFO:     > rtextures:. loaded (optional)
+INFO:     > rtext:..... loaded (optional)
+INFO:     > rmodels:... loaded (optional)
+INFO:     > raudio:.... loaded (optional)
+INFO: DISPLAY: Device initialized successfully
+INFO:     > Display size: 852 x 393
+INFO:     > Screen size:  852 x 393
+INFO:     > Render size:  852 x 393
+INFO:     > Viewport offsets: 0, 0
+INFO: GLAD: OpenGL ES 2.0 loaded successfully
+INFO: GL: Supported extensions count: 43
+INFO: GL: OpenGL device information:
+INFO:     > Vendor:   Apple Inc.
+INFO:     > Renderer: Apple Software Renderer
+INFO:     > Version:  OpenGL ES 2.0 APPLE-21.0.19
+INFO:     > GLSL:     OpenGL ES GLSL ES 1.00
+INFO: GL: VAO extension detected, VAO functions loaded successfully
+WARNING: GL: NPOT textures extension not found, limited NPOT support (no-mipmaps, no-repeat)
+INFO: GL: PVRT compressed textures supported
+WARNING: PLATFORM: Unable to open game controller [ERROR: Couldn't find mapping for device (0)]
+INFO: PLATFORM: DESKTOP (SDL): Initialized successfully
+INFO: TEXTURE: [ID 1] Texture loaded successfully (1x1 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 1] Default texture loaded successfully
+INFO: SHADER: [ID 1] Vertex shader compiled successfully
+INFO: SHADER: [ID 2] Fragment shader compiled successfully
+INFO: SHADER: [ID 3] Program shader loaded successfully
+INFO: SHADER: [ID 3] Default shader loaded successfully
+INFO: RLGL: Render batch vertex buffers loaded successfully in RAM (CPU)
+INFO: RLGL: Render batch vertex buffers loaded successfully in VRAM (GPU)
+INFO: RLGL: Default OpenGL state initialized successfully
+WARNING: GetWindowScaleDPI() not implemented on target platform
+INFO: TEXTURE: [ID 2] Texture loaded successfully (128x128 | GRAY_ALPHA | 1 mipmaps)
+INFO: FONT: Default font loaded successfully (224 glyphs)
+INFO: SYSTEM: Working Directory: /Users/runner/Library/Developer/CoreSimulator/Devices/E63A4C69-8ADF-4037-A5EE-AE47A98E069B/data/Containers/Bundle/Application/5F2FFBDE-3F3F-4443-A231-63ED41065CB7/ZeffalieComeBack.app
+INFO: TIMER: Target time per frame: 16.667 milliseconds
+INFO: AUDIO: Device initialized successfully
+INFO:     > Backend:       miniaudio | Core Audio
+INFO:     > Format:        32-bit IEEE Floating Point -> 32-bit IEEE Floating Point
+INFO:     > Channels:      2 -> 2
+INFO:     > Sample rate:   8000 -> 8000
+INFO:     > Periods size:  192
+INFO: STREAM: Initialized successfully (32000 Hz, 16 bit, Mono)
+INFO: FILEIO: Music data loaded successfully
+INFO:     > Sample rate:   32000 Hz
+INFO:     > Sample size:   16 bits
+INFO:     > Channels:      1 (Mono)
+INFO:     > Total frames:  7296000
+INFO: STREAM: Initialized successfully (22050 Hz, 16 bit, Mono)
+INFO: FILEIO: Music data loaded successfully
+INFO:     > Sample rate:   22050 Hz
+INFO:     > Sample size:   16 bits
+INFO:     > Channels:      1 (Mono)
+INFO:     > Total frames:  460173
+INFO: SHADER: [ID 4] Vertex shader compiled successfully
+INFO: SHADER: [ID 5] Fragment shader compiled successfully
+INFO: SHADER: [ID 6] Program shader loaded successfully
+INFO: VAO: [ID 2] Mesh uploaded successfully to VRAM (GPU)
+INFO: VAO: [ID 3] Mesh uploaded successfully to VRAM (GPU)
+INFO: VAO: [ID 4] Mesh uploaded successfully to VRAM (GPU)
+INFO: VAO: [ID 5] Mesh uploaded successfully to VRAM (GPU)
+WARNING: PLATFORM: Unable to open game controller [ERROR: Couldn't find mapping for device (0)]
+WARNING: GetWindowScaleDPI() not implemented on target platform
