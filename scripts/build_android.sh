@@ -1,11 +1,11 @@
 #!/bin/bash
-# Compile l'APK Android de Burger Rush, sans Gradle.
+# Compile l'APK Android de Zeffalie Come Back, sans Gradle.
 #
 # Prerequis (deja installes sur les machines GitHub Actions) :
 #   ANDROID_HOME  : SDK Android (build-tools + platforms)
 #   ANDROID_NDK   : NDK Android
 #   RAYLIB_SRC    : sources de raylib 5.5
-# Resultat : $OUT/BurgerRush-android.apk (arm64-v8a pour les telephones, x86_64 pour les emulateurs)
+# Resultat : $OUT/ZeffalieComeBack-android.apk (arm64-v8a pour les telephones, x86_64 pour les emulateurs)
 #
 # Etapes :
 #   1. pour chaque architecture (ABI), compiler raylib + la colle native_app_glue du NDK,
@@ -90,7 +90,7 @@ echo "=== APK"
 "$BT/zipalign" -f -p 4 "$OUT/unaligned.apk" "$OUT/aligned.apk"
 # Cle de debug commitee dans le depot : les mises a jour s'installent par-dessus l'ancienne version
 "$BT/apksigner" sign --ks android/debug.keystore --ks-pass pass:android --key-pass pass:android \
-    --out "$OUT/BurgerRush-android.apk" "$OUT/aligned.apk"
+    --out "$OUT/ZeffalieComeBack-android.apk" "$OUT/aligned.apk"
 # Verification de la signature, puis affichage du fichier produit
-"$BT/apksigner" verify "$OUT/BurgerRush-android.apk"
-ls -la "$OUT/BurgerRush-android.apk"
+"$BT/apksigner" verify "$OUT/ZeffalieComeBack-android.apk"
+ls -la "$OUT/ZeffalieComeBack-android.apk"

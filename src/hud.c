@@ -507,7 +507,9 @@ void HudDrawTitle(int w, int h)
     char buf[64];
     int cx = w/2, y = h/12;
     DrawRectangle(0, 0, w, h, (Color){ 0, 0, 0, 110 });   // assombrit la scene 3D derriere
-    TextCenter("BURGER RUSH", cx, y, 90, (Color){ 255, 200, 60, 255 });
+    // Titre en 90 px, plus petit si l'ecran est etroit (tablette 4:3...) pour ne pas deborder
+    int titleSize = (int)fminf(90.0f, w*0.072f);
+    TextCenter("ZEFFALIE COME BACK", cx, y + (90 - titleSize)/2, titleSize, (Color){ 255, 200, 60, 255 });
     TextCenter("OPERATION HK416", cx, y + 92, 34, RAYWHITE);
     TextCenter("Des mercenaires enchaines veulent enlever vos poussins. Protegez-les !", cx, y + 134, 18, LIGHTGRAY);
 

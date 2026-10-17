@@ -1,5 +1,5 @@
 #!/bin/bash
-# Compile Burger Rush pour iOS (sur un Mac avec Xcode).
+# Compile Zeffalie Come Back pour iOS (sur un Mac avec Xcode).
 #
 # raylib n'a pas de version iOS officielle : on utilise son backend SDL2
 # (fenetre, OpenGL ES 2 et tactile geres par SDL).
@@ -7,7 +7,7 @@
 # Usage : scripts/build_ios.sh device|simulator
 #   RAYLIB_SRC : sources de raylib 5.5
 #   SDL_SRC    : sources de SDL 2.30
-# Resultat : build-ios-<cible>/BurgerRush.app (+ BurgerRush-iOS.ipa pour "device")
+# Resultat : build-ios-<cible>/ZeffalieComeBack.app (+ ZeffalieComeBack-iOS.ipa pour "device")
 #
 # Etapes : 1. SDL2 en bibliotheque statique (CMake) ; 2. raylib avec le backend SDL ;
 # 3. le jeu ; 4. edition de liens + paquet .app (Info.plist, icones, signature) ;
@@ -57,13 +57,13 @@ for f in src/*.c ios/platform_ios.c; do
 done
 
 # 4. Paquet .app : un dossier contenant l'executable, l'Info.plist et les icones
-echo "=== BurgerRush.app"
-APP="$OUT/BurgerRush.app"
+echo "=== ZeffalieComeBack.app"
+APP="$OUT/ZeffalieComeBack.app"
 rm -rf "$APP"
 mkdir -p "$APP"
 # Edition de liens avec SDL2 et les frameworks Apple dont SDL a besoin
 # (affichage, son, manettes, capteurs, retour haptique...)
-$CC -o "$APP/BurgerRush" "$OUT"/obj/*.o "$OUT/sdl/lib/libSDL2.a" "$OUT/sdl/lib/libSDL2main.a" \
+$CC -o "$APP/ZeffalieComeBack" "$OUT"/obj/*.o "$OUT/sdl/lib/libSDL2.a" "$OUT/sdl/lib/libSDL2main.a" \
     -framework UIKit -framework Foundation -framework OpenGLES -framework QuartzCore -framework CoreGraphics \
     -framework CoreMotion -framework GameController -framework AVFoundation -framework AudioToolbox \
     -framework CoreAudio -framework CoreHaptics -framework Metal -framework CoreBluetooth -framework CoreVideo \
@@ -73,11 +73,11 @@ sed "s/__PLATFORM__/$PLATFORM/" ios/Info.plist > "$APP/Info.plist"
 cp ios/icons/*.png "$APP/"
 codesign --force --sign - "$APP"   # signature "ad hoc" (simulateur ; sur iPhone, l'outil d'installation re-signe)
 
-# 5. Archive .ipa : format d'installation iOS = un zip contenant Payload/BurgerRush.app
+# 5. Archive .ipa : format d'installation iOS = un zip contenant Payload/ZeffalieComeBack.app
 if [ "$TARGET" = device ]; then
     rm -rf "$OUT/Payload" && mkdir -p "$OUT/Payload" && cp -R "$APP" "$OUT/Payload/"
-    (cd "$OUT" && rm -f BurgerRush-iOS.ipa && zip -qry BurgerRush-iOS.ipa Payload)
-    ls -la "$OUT/BurgerRush-iOS.ipa"
+    (cd "$OUT" && rm -f ZeffalieComeBack-iOS.ipa && zip -qry ZeffalieComeBack-iOS.ipa Payload)
+    ls -la "$OUT/ZeffalieComeBack-iOS.ipa"
 fi
 # Affiche l'architecture de l'executable produit (verification)
-file "$APP/BurgerRush"
+file "$APP/ZeffalieComeBack"

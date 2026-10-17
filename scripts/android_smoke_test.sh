@@ -18,12 +18,12 @@ adb wait-for-device
 adb install -r "$APK"
 adb logcat -c
 # Lance l'activite native du jeu, puis laisse 25 s pour le demarrage (emulateur lent)
-adb shell am start -n io.github.wakadu13.burgerrush/android.app.NativeActivity
+adb shell am start -n io.github.wakadu13.zeffaliecomeback/android.app.NativeActivity
 sleep 25
 # Capture d'ecran du menu (exec-out : sortie binaire brute, sans conversion des fins de ligne)
 adb exec-out screencap -p > "$OUT/android-1-menu.png"
 # PID du processus du jeu (tr enleve le \r ajoute par adb shell)
-PID=$(adb shell pidof io.github.wakadu13.burgerrush | tr -d '\r')
+PID=$(adb shell pidof io.github.wakadu13.zeffaliecomeback | tr -d '\r')
 # Pile de tous les threads du jeu, utile si le jeu est bloque
 adb shell debuggerd -b "$PID" > "$OUT/android-threads.txt" 2>&1 || true
 
@@ -54,12 +54,12 @@ wait
 
 # Logs de raylib, puis lignes interessantes des logs systeme (plantages, ANR = application bloquee)
 adb logcat -d -s raylib > "$OUT/android-logcat.txt"
-adb logcat -d | grep -iE "fatal|crash|burgerrush|libmain|ANR" | tail -80 >> "$OUT/android-logcat.txt"
+adb logcat -d | grep -iE "fatal|crash|zeffaliecomeback|libmain|ANR" | tail -80 >> "$OUT/android-logcat.txt"
 
 # Echec si le jeu ne tourne plus ou si l'affichage n'a pas pu s'initialiser
-if ! adb shell pidof io.github.wakadu13.burgerrush; then echo "ECHEC : le jeu s'est arrete"; exit 1; fi
+if ! adb shell pidof io.github.wakadu13.zeffaliecomeback; then echo "ECHEC : le jeu s'est arrete"; exit 1; fi
 if grep -qE "Failed to create EGL|Failed to (compile|link)" "$OUT/android-logcat.txt"; then echo "ECHEC : erreur graphique"; exit 1; fi
-if grep -q "ANR in io.github.wakadu13.burgerrush" "$OUT/android-logcat.txt"; then echo "ECHEC : le jeu ne repond plus (ANR)"; exit 1; fi
+if grep -q "ANR in io.github.wakadu13.zeffaliecomeback" "$OUT/android-logcat.txt"; then echo "ECHEC : le jeu ne repond plus (ANR)"; exit 1; fi
 # raylib ecrit "Program shader loaded" quand un shader est compile et lie avec succes
 grep -q "Program shader loaded" "$OUT/android-logcat.txt" || { echo "ECHEC : shaders non charges"; exit 1; }
 echo "OK"

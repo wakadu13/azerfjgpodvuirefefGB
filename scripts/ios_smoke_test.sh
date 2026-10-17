@@ -1,13 +1,13 @@
 #!/bin/bash
 # Test de fumee dans le simulateur iOS : installe l'app, capture le menu,
 # puis relance en partie directe (BR_AUTOSTART) et capture le jeu.
-# Usage : scripts/ios_smoke_test.sh <BurgerRush.app> <dossier de sortie>
+# Usage : scripts/ios_smoke_test.sh <ZeffalieComeBack.app> <dossier de sortie>
 # set -x : affiche chaque commande executee (logs de CI)
 set -x
 # Arguments : l'application .app et le dossier de sortie ; BUNDLE = identifiant de l'app
 APP=$1
 OUT=$2
-BUNDLE=io.github.wakadu13.burgerrush
+BUNDLE=io.github.wakadu13.zeffaliecomeback
 mkdir -p "$OUT"
 
 # Choisit le premier simulateur iPhone disponible : simctl liste les appareils en JSON,

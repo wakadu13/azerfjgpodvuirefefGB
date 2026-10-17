@@ -11,7 +11,7 @@
 // Vrai si l'on doit afficher / utiliser les controles tactiles.
 // Sur mobile (BR_MOBILE defini a la compilation) c'est toujours le cas.
 // Sur PC, on peut forcer ce mode en lancant le jeu avec la variable
-// d'environnement BR_TOUCH (ex. "BR_TOUCH=1 ./burger_rush") pour tester
+// d'environnement BR_TOUCH (ex. "BR_TOUCH=1 ./zeffalie_come_back") pour tester
 // l'interface tactile a la souris. Le resultat est mis en cache (static)
 // pour ne lire l'environnement qu'une seule fois.
 bool TouchMode(void)

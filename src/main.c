@@ -1,5 +1,5 @@
 /*
- * BURGER RUSH : Operation HK416
+ * ZEFFALIE COME BACK : Operation HK416
  * FPS en C avec raylib : un operateur arme d'un HK416 defend ses poussins
  * contre des vagues de mercenaires enchaines. Solo, ecran partage ou
  * reseau (jusqu'a 4 joueurs). PC, Mac, Linux, Android et iOS.
@@ -60,13 +60,21 @@ int main(int argc, char *argv[])
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_FULLSCREEN_MODE);
   #endif
     // Android : pas de MSAA, beaucoup d'appareils (et l'emulateur) refusent alors de creer le contexte EGL
-    InitWindow(width, height, "Burger Rush");
+    InitWindow(width, height, "Zeffalie Come Back");
     SetTargetFPS(60);   // 60 images/s sur mobile pour menager la batterie
 #else
     // PC / Mac / Linux : fenetre redimensionnable, anticrenelage 4x (MSAA)
     // et synchronisation verticale pour eviter les dechirures d'image
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
-    InitWindow(1280, 720, "BURGER RUSH - Operation HK416");
+    InitWindow(1280, 720, "Zeffalie Come Back");
+    {
+        // Icone de la fenetre et de la barre des taches : poussin enchaine
+        // (pixels integres au programme, generes par scripts/make_icon.py)
+        extern const int ICON_SIZE;
+        extern const unsigned char ICON_RGBA[];
+        Image icon = { (void *)ICON_RGBA, ICON_SIZE, ICON_SIZE, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+        SetWindowIcon(icon);
+    }
     SetTargetFPS(144);  // plafond eleve : les ecrans rapides restent fluides
 #endif
     SetExitKey(KEY_NULL);   // Echap (ou Retour sur Android) sert a la pause

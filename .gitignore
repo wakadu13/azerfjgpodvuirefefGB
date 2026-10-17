@@ -1,5 +1,9 @@
-burger_rush
-burger_rush.exe
+zeffalie_come_back
+zeffalie_come_back.exe
 build/
 *.o
 screenshot*.png
+
+# Fichiers caches de macOS
+.DS_Store
+icon_res.o

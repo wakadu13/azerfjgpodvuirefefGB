@@ -2,10 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleExecutable</key><string>BurgerRush</string>
-    <key>CFBundleIdentifier</key><string>io.github.wakadu13.burgerrush</string>
-    <key>CFBundleName</key><string>Burger Rush</string>
-    <key>CFBundleDisplayName</key><string>Burger Rush</string>
+    <key>CFBundleExecutable</key><string>ZeffalieComeBack</string>
+    <key>CFBundleIdentifier</key><string>io.github.wakadu13.zeffaliecomeback</string>
+    <key>CFBundleName</key><string>Zeffalie Come Back</string>
+    <key>CFBundleDisplayName</key><string>Zeffalie Come Back</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundleVersion</key><string>1</string>

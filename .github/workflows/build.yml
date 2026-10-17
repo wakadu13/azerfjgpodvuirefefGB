@@ -28,15 +28,15 @@ jobs:
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
           cmake --build build --config Release -j 4
 
-      - name: Creer BurgerRush.app
+      - name: Creer ZeffalieComeBack.app
         run: |
-          sh scripts/make_macos_app.sh build/burger_rush dist
-          file dist/BurgerRush.app/Contents/MacOS/BurgerRush
+          sh scripts/make_macos_app.sh build/zeffalie_come_back dist
+          file dist/ZeffalieComeBack.app/Contents/MacOS/ZeffalieComeBack
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BurgerRush-macOS-arm64
-          path: dist/BurgerRush-macOS-arm64.zip
+          name: ZeffalieComeBack-macOS-arm64
+          path: dist/ZeffalieComeBack-macOS-arm64.zip
 
   windows:
     name: Windows (x64)
@@ -55,12 +55,12 @@ jobs:
       - name: Compiler le jeu
         run: |
           make windows RAYLIB_WIN_PATH=raylib-win
-          mkdir -p dist && cp release/BurgerRush.exe dist/BurgerRush-windows-x64.exe
+          mkdir -p dist && cp release/ZeffalieComeBack.exe dist/ZeffalieComeBack-windows-x64.exe
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BurgerRush-windows-x64
-          path: dist/BurgerRush-windows-x64.exe
+          name: ZeffalieComeBack-windows-x64
+          path: dist/ZeffalieComeBack-windows-x64.exe
 
   linux:
     name: Linux (x64)
@@ -77,12 +77,12 @@ jobs:
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j 4
-          mkdir -p dist && tar -czf dist/BurgerRush-linux-x64.tar.gz -C build burger_rush
+          mkdir -p dist && tar -czf dist/ZeffalieComeBack-linux-x64.tar.gz -C build zeffalie_come_back
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BurgerRush-linux-x64
-          path: dist/BurgerRush-linux-x64.tar.gz
+          name: ZeffalieComeBack-linux-x64
+          path: dist/ZeffalieComeBack-linux-x64.tar.gz
 
   android:
     name: Android (APK)
@@ -100,8 +100,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BurgerRush-android
-          path: build-android/BurgerRush-android.apk
+          name: ZeffalieComeBack-android
+          path: build-android/ZeffalieComeBack-android.apk
 
   android-test:
     name: Android (test sur emulateur)
@@ -112,7 +112,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: BurgerRush-android
+          name: ZeffalieComeBack-android
 
       - name: Activer KVM
         run: |
@@ -128,7 +128,7 @@ jobs:
           profile: pixel_5
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: bash scripts/android_smoke_test.sh BurgerRush-android.apk captures
+          script: bash scripts/android_smoke_test.sh ZeffalieComeBack-android.apk captures
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -155,11 +155,11 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BurgerRush-iOS
-          path: build-ios-device/BurgerRush-iOS.ipa
+          name: ZeffalieComeBack-iOS
+          path: build-ios-device/ZeffalieComeBack-iOS.ipa
 
       - name: Lancer le jeu dans le simulateur iOS
-        run: bash scripts/ios_smoke_test.sh build-ios-simulator/BurgerRush.app captures
+        run: bash scripts/ios_smoke_test.sh build-ios-simulator/ZeffalieComeBack.app captures
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -197,7 +197,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: BurgerRush-*
+          pattern: ZeffalieComeBack-*
           path: dist
           merge-multiple: true
 
@@ -208,5 +208,5 @@ jobs:
         run: |
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest dist/* --target "${{ github.sha }}" \
-            --title "BURGER RUSH - derniere version" \
-            --notes "Executables compiles automatiquement depuis main : Windows (.exe), macOS Apple Silicon (.zip contenant BurgerRush.app), Linux (.tar.gz), Android (.apk) et iOS (.ipa non signee, a installer avec Sideloadly ou AltStore)."
+            --title "ZEFFALIE COME BACK - derniere version" \
+            --notes "Executables compiles automatiquement depuis main : Windows (.exe), macOS Apple Silicon (.zip contenant ZeffalieComeBack.app), Linux (.tar.gz), Android (.apk) et iOS (.ipa non signee, a installer avec Sideloadly ou AltStore)."
