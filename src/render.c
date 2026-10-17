@@ -103,7 +103,7 @@ static const char *VS_BODY =
 // Fonctions de bruit :
 //  - hash3 : pseudo-aleatoire classique "fract(sin(dot(...)) * 43758.5453)",
 //    donne une valeur entre 0 et 1 differente pour chaque point entier ;
-//  - noise3 : "value noise" 3D : on prend les 8 coins entiers du cube qui
+//  - custom_noise3 : "value noise" 3D : on prend les 8 coins entiers du cube qui
 //    contient p, et on melange leurs valeurs (mix = interpolation lineaire)
 //    avec un poids lisse f*f*(3-2f) (smoothstep) pour eviter les aretes ;
 //  - camoField : somme de 2 octaves de bruit (frequences 2.6 et 5.5) pour des
@@ -145,7 +145,7 @@ static const char *FS_BODY =
     "uniform vec3 camoB;\n"
     "uniform vec3 camoC;\n"
     "float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719)))*43758.5453); }\n"
-    "float noise3(vec3 p) {\n"
+    "float custom_noise3(vec3 p) {\n"   // pas "noise3" : nom reserve en GLSL (refuse par certains pilotes)
     "    vec3 i = floor(p);\n"            // coin entier du cube
     "    vec3 f = fract(p);\n"            // position dans le cube (0..1)
     "    f = f*f*(3.0 - 2.0*f);\n"        // lissage smoothstep
@@ -155,7 +155,7 @@ static const char *FS_BODY =
     "    float d = mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), f.x);\n"
     "    return mix(mix(a, b, f.y), mix(c, d, f.y), f.z);\n"               // ... puis sur y, puis sur z
     "}\n"
-    "float camoField(vec3 p) { return noise3(p*2.6)*0.65 + noise3(p*5.5 + 3.7)*0.35; }\n"
+    "float camoField(vec3 p) { return custom_noise3(p*2.6)*0.65 + custom_noise3(p*5.5 + 3.7)*0.35; }\n"
     "void main() {\n"
     "    vec3 base = colDiffuse.rgb;\n"
     "    if (checker > 0.5) {\n"
