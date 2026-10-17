@@ -1,6 +1,6 @@
 # 🍔 BURGER RUSH : Opération HK416
 
-FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (écran partagé) ou **jusqu'à 4 en réseau** (plusieurs PC). Disponible pour **Windows**, **macOS (Apple Silicon)** et **Linux**. Vous incarnez à la première personne un opérateur armé d'un **HK416** qui défend son stand de burgers contre des vagues de gloutons obèses bien décidés à tout dévorer.
+FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (écran partagé) ou **jusqu'à 4 en réseau**. Disponible pour **Windows**, **macOS (Apple Silicon)**, **Linux**, **Android** et **iOS**. Vous incarnez à la première personne un opérateur armé d'un **HK416** qui défend son stand de burgers contre des vagues de gloutons obèses bien décidés à tout dévorer.
 
 ![Aperçu](docs/apercu.png)
 
@@ -31,6 +31,13 @@ Tout est généré par le code (modèles 3D, sons, textures) : **aucun fichier e
 - Recul, dispersion selon le mouvement, flash du canon qui éclaire la scène, traçantes.
 - Rechargement animé (chargeur qui sort/rentre), plus long à vide (culasse).
 - **Headshot = dégâts x3.**
+
+### Le harpon
+
+- Deuxième arme : **2**, **E** ou la molette (**1** pour revenir au HK416), **RB** à la manette, bouton **HARPON** sur mobile.
+- Tire une flèche : le glouton touché **meurt en un coup et est projeté** à la renverse en tournoyant, la flèche plantée dans le ventre.
+- En vol, il **percute les autres gloutons** (gros dégâts, il peut même les faire décoller).
+- 1 harpon chargé + 6 en réserve. +3 à chaque vague, +1 par caisse de munitions. 1,3 s pour recharger.
 
 ## 👥 Multijoueur
 
@@ -79,6 +86,7 @@ L'écran se coupe en deux, chaque joueur a sa vue, son HUD et son radar. Contrô
 | Clic gauche | Tirer |
 | Clic droit | Viseur point rouge |
 | R | Recharger |
+| 1 / 2, E, molette | HK416 / harpon |
 | B | Auto / semi-auto |
 | Maj gauche | Sprint |
 | Espace | Sauter (on peut monter sur les caisses) |
@@ -95,6 +103,7 @@ En solo, une manette fonctionne aussi (mêmes boutons que le joueur 2 ci-dessous
 | Tirer | RT | Ctrl droit |
 | Viseur point rouge | LT | Maj droite |
 | Recharger | X / Carré | U |
+| Harpon | RB / R1 | M |
 | Sauter | A / Croix | O |
 | Sprint | L3 | H |
 | Mode de tir | Y / Triangle | N |
@@ -126,6 +135,31 @@ Dézippez puis lancez **BurgerRush.app**. L'application n'étant pas signée par
 
 Même endroit que pour macOS : `BurgerRush-linux-x64.tar.gz` (ou compilez, voir plus bas).
 
+### Android
+
+`BurgerRush-android.apk`, sur la [page des releases](../../releases/latest) (ou *Artifacts* du dernier run « Build »).
+Ouvrez-le sur le téléphone et autorisez l'installation d'applications de source inconnue quand Android le demande.
+
+### iOS (iPhone / iPad)
+
+`BurgerRush-iOS.ipa`, même endroit. Apple n'autorise pas l'installation directe d'une app non signée :
+installez-la avec **[Sideloadly](https://sideloadly.io)** ou **[AltStore](https://altstore.io)** (gratuits, avec votre identifiant Apple).
+Elle doit alors être réinstallée tous les 7 jours (limite Apple pour les comptes gratuits).
+
+## 📱 Contrôles tactiles
+
+| Zone | Action |
+|---|---|
+| Moitié gauche | Joystick (il apparaît sous le doigt). Poussé à fond vers l'avant : sprint |
+| Moitié droite | Glisser pour viser |
+| **FEU** | Tirer (on peut aussi viser en glissant le doigt dessus) |
+| **VISER** | Viseur point rouge (appui = activer / désactiver) |
+| **SAUT**, **RECH.**, **HARPON** | Sauter, recharger, changer d'arme |
+| **II** | Pause |
+
+Le multijoueur réseau marche aussi sur téléphone (même Wi-Fi) ; l'écran partagé est réservé au PC.
+Une manette Bluetooth fonctionne aussi.
+
 ## 🗂️ Organisation du code
 
 | Fichier | Rôle |
@@ -140,8 +174,11 @@ Même endroit que pour macOS : `BurgerRush-linux-x64.tar.gz` (ou compilez, voir 
 | `src/waves.c` | Enchaînement des vagues et récompenses |
 | `src/pickup.c` | Bonus (munitions, salade) |
 | `src/map.c` | Arène, stand de burgers, collisions |
+| `src/harpoon.c` | Flèches du harpon (projectiles) |
 | `src/effects.c` | Particules et traçantes |
 | `src/hud.c` | Interface 2D et écrans |
+| `src/ui.c` | Échelle de l'interface et boutons (souris / doigt) |
+| `src/touch.c` | Contrôles tactiles (mobile) |
 | `src/render.c` | Shader et primitives 3D (cube, sphère, cylindre) |
 | `src/audio.c` | Sons générés par le code |
 | `src/config.h` | Toutes les constantes de réglage (vitesses, dégâts, munitions…) |
@@ -177,6 +214,12 @@ Pour régénérer l'exe Windows depuis Linux (MinGW + raylib compilée pour Wind
 make windows RAYLIB_WIN_PATH=/chemin/vers/raylib-windows
 ```
 
-Le workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) compile automatiquement les versions macOS ARM, Windows et Linux à chaque pull request.
+### Mobile
+
+- **Android** : `scripts/build_android.sh` (NDK + SDK Android, sans Gradle).
+- **iOS** (sur un Mac avec Xcode) : `scripts/build_ios.sh device` ou `simulator`. raylib n'ayant pas de version iOS officielle, le jeu utilise son backend **SDL2**.
+- Pour tester l'interface tactile sur PC : `BR_TOUCH=1 ./burger_rush` (la souris joue le rôle du doigt).
+
+Le workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) compile automatiquement les 5 versions à chaque pull request. Il lance aussi le jeu dans un émulateur Android et un simulateur iOS, dont les captures sont publiées sur la branche `ci-captures`.
 
 Sous Linux, les dépendances de raylib sont : `libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl1-mesa-dev`.
