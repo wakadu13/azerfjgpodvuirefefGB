@@ -81,13 +81,13 @@ jobs:
       - name: Compiler le jeu
         run: |
           bash scripts/build_web.sh raylib-web build-web
-          mkdir -p dist && (cd build-web && zip -qr ../dist/ZeffalieComeBack-web.zip .)
+          mkdir -p dist && cp build-web/index.html dist/ZeffalieComeBack-web.html
 
-      # Le site (index.html + .js + .wasm) pour GitHub Pages et la release
+      # Le jeu en un seul fichier html pour GitHub Pages et la release
       - uses: actions/upload-artifact@v4
         with:
           name: ZeffalieComeBack-web
-          path: dist/ZeffalieComeBack-web.zip
+          path: dist/ZeffalieComeBack-web.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build-web
@@ -259,4 +259,4 @@ jobs:
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest dist/* --target "${{ github.sha }}" \
             --title "ZEFFALIE COME BACK - derniere version" \
-            --notes "Executables compiles automatiquement depuis main : Windows (.exe), macOS Apple Silicon (.zip contenant ZeffalieComeBack.app), Linux (.tar.gz), Android (.apk), iOS (.ipa non signee, a installer avec Sideloadly ou AltStore) et version navigateur (ZeffalieComeBack-web.zip, a mettre sur un serveur web)."
+            --notes "Executables compiles automatiquement depuis main : Windows (.exe), macOS Apple Silicon (.zip contenant ZeffalieComeBack.app), Linux (.tar.gz), Android (.apk), iOS (.ipa non signee, a installer avec Sideloadly ou AltStore) et version navigateur (ZeffalieComeBack-web.html : un seul fichier, a ouvrir d'un double-clic)."

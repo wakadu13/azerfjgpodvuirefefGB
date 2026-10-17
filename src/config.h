@@ -28,8 +28,14 @@
 
 // Reseau
 #define NET_PORT           27016   // port UDP de l'hote
+#if defined(BR_WEB)
+// Navigateur : le relais claude.ai accepte ~40 messages/s par page, on reste en dessous
+#define NET_SNAPSHOT_RATE  8.0f
+#define NET_STATE_RATE     15.0f
+#else
 #define NET_SNAPSHOT_RATE  30.0f   // etats du monde envoyes par l'hote, par seconde
 #define NET_STATE_RATE     60.0f   // etats des joueurs envoyes par les clients, par seconde
+#endif
 #define NET_TIMEOUT        6.0f    // secondes sans nouvelles avant deconnexion
 
 // Poussins du stand (ce que les mercenaires viennent voler)

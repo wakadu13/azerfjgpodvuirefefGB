@@ -10,6 +10,7 @@ Tout est généré par le code (modèles 3D, sons, textures), sauf l'enregistrem
 
 ## 🎮 Le jeu
 
+- L'arène est un **camp militaire de nuit** : sol de gravier, enceinte en **gabions**, grandes **tentes** beiges à armature noire et une tente vert olive, murets de sacs de sable, caisses militaires, grands lampadaires, panneaux SORTIE et cyprès derrière les murs.
 - Au centre de l'arène, **12 poussins** sautillent sur le comptoir du stand.
 - Les mercenaires entrent par les **4 portes** de l'arène et foncent vers le comptoir pour attraper les poussins. Chaque poussin enlevé les rend **plus costauds et plus résistants**.
 - Un mercenaire qui brandit un poussin met encore un instant à l'emporter : **abattez-le à temps et le poussin est sauvé**.
@@ -122,13 +123,14 @@ Le jeu tourne aussi **dans un navigateur** (Chrome, Edge, Firefox, Safari), sans
 
 - **Ordinateur** : clavier + souris, comme la version PC. Cliquez dans le jeu pour capturer la souris ; **Échap** la libère et met en pause.
 - **Téléphone / tablette** : commandes tactiles détectées automatiquement, en **paysage** ; le jeu passe en plein écran au premier toucher.
-- Modes **solo** et **écran partagé** ; le **réseau** n'est pas disponible dans le navigateur (les navigateurs n'autorisent pas l'UDP).
+- Modes **solo** et **écran partagé**, et **multijoueur** (jusqu'à 4) sur la **page claude.ai du jeu** : l'hôte choisit HÉBERGER et obtient un **code à 4 chiffres**, les autres choisissent REJOINDRE et le tapent. Chaque joueur doit avoir accès à la page en **Contributeur** (bouton Partager de la page). Les messages passent par le relais temps réel de claude.ai (`src/netsock_web.c` + module `ZNet` de `web/shell.html`), avec le même protocole que la version PC.
+- Hors de claude.ai (fichier html, GitHub Pages…), le menu réseau est masqué : les navigateurs n'autorisent pas l'UDP.
 
-Mise en ligne : à chaque mise à jour de `main`, le site est compilé (`ZeffalieComeBack-web.zip` dans la release) et publié sur **GitHub Pages** si c'est activé (*Settings → Pages → Source : GitHub Actions* ; sur un dépôt privé, GitHub Pages demande un compte payant). Le contenu du zip peut aussi être déposé sur n'importe quel hébergeur web (itch.io, Netlify…). Pour essayer en local :
+Mise en ligne : à chaque mise à jour de `main`, le jeu est compilé en **un seul fichier** `ZeffalieComeBack-web.html` (dans la release : il suffit de l'ouvrir d'un double-clic, sans serveur) et publié sur **GitHub Pages** si c'est activé (*Settings → Pages → Source : GitHub Actions* ; sur un dépôt privé, GitHub Pages demande un compte payant). Ce fichier peut aussi être déposé tel quel sur n'importe quel hébergeur web (itch.io, Netlify…). Pour le compiler soi-même :
 
 ```bash
 bash scripts/build_web.sh <raylib compilée pour le web> build-web   # emcc dans le PATH
-python3 -m http.server -d build-web 8000                            # puis http://localhost:8000
+# puis ouvrir build-web/index.html dans le navigateur (double-clic)
 ```
 
 ### Windows
