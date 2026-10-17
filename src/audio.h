@@ -22,7 +22,7 @@ typedef enum {
 } SndId;
 
 void AudioInit(void);    // ouvre le peripherique audio et genere tous les sons
-void AudioUpdate(void);  // a chaque image : fait avancer la musique de fond (tambour et choeur)
+void AudioUpdate(void);  // a chaque image : fait avancer la musique de fond (Kyrie des gueux + tambour)
 void AudioClose(void);   // libere les sons et ferme le peripherique
 // Joue un son. pitch : 1 = normal, 2 = une octave plus aigu (et 2x plus court) ;
 // volume : 0 a 1.

@@ -4,9 +4,9 @@ FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (éc
 
 ![Aperçu](docs/apercu.png)
 
-Tout est généré par le code (modèles 3D, sons, textures) : **aucun fichier externe**.
+Tout est généré par le code (modèles 3D, sons, textures), sauf l'enregistrement du « Kyrie des gueux » (`assets/kyrie_des_gueux.ogg`), intégré directement dans l'exécutable par `scripts/embed_music.py` : **aucun fichier externe à fournir**.
 
-**Ambiance** : la partie se joue **de nuit** (ciel étoilé, lune, lampadaires et lampe du stand qui éclairent l'arène). Les mercenaires lancent des « **On va croquer les poussins !** » (bulle au-dessus de la tête et voix grognée). En fond, une **marche au tambour** avec un **chœur grave** (composition originale générée par le code, dans l'esprit d'un chant de troupe).
+**Ambiance** : la partie se joue **de nuit** (ciel étoilé, lune, lampadaires et lampe du stand qui éclairent l'arène). Les mercenaires lancent des « **On va croquer les poussins !** » (bulle au-dessus de la tête et voix grognée). En fond, le chant militaire **« Kyrie des gueux »** accompagné d'une **marche au tambour** générée par le code.
 
 ## 🎮 Le jeu
 

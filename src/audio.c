@@ -207,21 +207,26 @@ static Sound GenTaunt(void)
 }
 
 //----------------------------------------------------------------------------------
-// Musique de fond : marche au tambour et choeur grave
+// Musique de fond : "Kyrie des gueux" et tambour
 //----------------------------------------------------------------------------------
-// Boucle de 8 mesures a 4 temps, generee au demarrage (~21 s) :
-//  - caisse claire militaire (coups, accents, roulements) et grosse caisse ;
-//  - choeur d'hommes sur "aaah", melodie solennelle en re mineur, doublee a
-//    l'octave et a la quinte en dessous, sur un bourdon re-la ;
-//  - une composition originale "dans l'esprit" d'un chant de troupe.
-// Elle est emballee dans un fichier WAV en memoire et jouee comme Music, que
-// raylib sait faire tourner en boucle sans coupure.
+// Deux musiques jouent en boucle en meme temps :
+//  - l'enregistrement du "Kyrie des gueux" (chant militaire), en OGG Vorbis
+//    integre a l'executable (tableau KYRIE_OGG, genere par
+//    scripts/embed_music.py a partir de assets/kyrie_des_gueux.ogg) ;
+//  - un tambour de marche genere au demarrage : boucle de 8 mesures a 4 temps
+//    (~21 s), caisse claire militaire (coups, accents, roulements) et grosse
+//    caisse, emballee dans un fichier WAV en memoire.
+// Le chant n'a pas de tempo regulier : le tambour n'est pas cale dessus, il
+// reste discret en fond. raylib fait tourner chaque Music en boucle sans coupure.
 #define MUSIC_RATE 22050
 #define MUSIC_BPM  92.0f
 
-static Music music;
-static unsigned char *musicWav;   // fichier WAV en memoire (doit vivre aussi longtemps que la Music)
-static bool musicOk;
+extern const unsigned int KYRIE_OGG_SIZE;   // kyrie_ogg.c (fichier genere)
+extern const unsigned char KYRIE_OGG[];
+
+static Music drums, kyrie;
+static bool drumsOk, kyrieOk;
+static unsigned char *drumsWav;   // fichier WAV du tambour en memoire (doit vivre aussi longtemps que la Music)
 
 // Ajoute (en boucle) un coup de caisse claire de force vel a l'echantillon s0
 static void AddSnare(float *buf, int n, int s0, float vel)
@@ -250,34 +255,24 @@ static void AddKick(float *buf, int n, int s0, float vel)
     }
 }
 
-// Ajoute une note chantee (choeur : 3 voix legerement desaccordees) de
-// hauteur midi, de start a start+len secondes, avec attaque et relachement
-static void AddVoice(float *buf, int n, float start, float len, int midi, float gain)
-{
-    float f = 440.0f*powf(2.0f, (midi - 69)/12.0f);
-    static const float DETUNE[3] = { 1.0f, 1.005f, 0.995f };
-    float ph[3] = { 0.0f, 0.33f, 0.66f };
-    int s0 = (int)(start*MUSIC_RATE), total = (int)((len + 0.3f)*MUSIC_RATE);
-    for (int i = 0; i < total; i++)
-    {
-        float t = (float)i/MUSIC_RATE;
-        float env = fminf(t/0.12f, 1.0f)*(t > len ? expf(-(t - len)*12.0f) : 1.0f);
-        float vib = 1.0f + 0.004f*sinf(2*PI*5.0f*t);   // vibrato
-        float v = 0.0f;
-        for (int k = 0; k < 3; k++) { ph[k] += f*DETUNE[k]*vib/MUSIC_RATE; v += Saw(ph[k]); }
-        buf[(s0 + i) % n] += v*env*gain;
-    }
-}
-
 static void MusicInit(void)
 {
+    // Chant : decode au fur et a mesure depuis la memoire
+    kyrie = LoadMusicStreamFromMemory(".ogg", KYRIE_OGG, (int)KYRIE_OGG_SIZE);
+    kyrieOk = IsMusicValid(kyrie);
+    if (kyrieOk)
+    {
+        kyrie.looping = true;
+        SetMusicVolume(kyrie, 0.6f);
+        PlayMusicStream(kyrie);
+    }
+
     const float beat = 60.0f/MUSIC_BPM;
     const int bars = 8;
     int n = (int)(bars*4*beat*MUSIC_RATE);
-    float *drums = (float *)MemAlloc(n*sizeof(float));
-    float *choir = (float *)MemAlloc(n*sizeof(float));
+    float *buf = (float *)MemAlloc(n*sizeof(float));
 
-    // Tambour : force des coups de caisse claire par double-croche (16 par mesure).
+    // Force des coups de caisse claire par double-croche (16 par mesure).
     // Mesure A = marche ; mesure B (4e et 8e) = finit par un roulement.
     static const float MARCH[16] = { 1, 0, .35f, 0, .8f, 0, .4f, .35f, 1, 0, .35f, 0, .8f, .45f, .55f, .65f };
     static const float ROLL[16]  = { 1, 0, .35f, 0, .8f, 0, .4f, .35f, 1, .3f, .4f, .5f, .6f, .7f, .8f, .9f };
@@ -288,60 +283,19 @@ static void MusicInit(void)
         for (int s = 0; s < 16; s++)
         {
             float t = (b*16 + s)*sixteenth;
-            if (pat[s] > 0) AddSnare(drums, n, (int)(t*MUSIC_RATE), pat[s]);
+            if (pat[s] > 0) AddSnare(buf, n, (int)(t*MUSIC_RATE), pat[s]);
             // Roulement : un coup supplementaire entre chaque double-croche
-            if (pat == ROLL && s >= 9) AddSnare(drums, n, (int)((t + sixteenth/2)*MUSIC_RATE), pat[s]*0.6f);
-            if (s == 0 || s == 8) AddKick(drums, n, (int)(t*MUSIC_RATE), s == 0 ? 1.0f : 0.8f);
+            if (pat == ROLL && s >= 9) AddSnare(buf, n, (int)((t + sixteenth/2)*MUSIC_RATE), pat[s]*0.6f);
+            if (s == 0 || s == 8) AddKick(buf, n, (int)(t*MUSIC_RATE), s == 0 ? 1.0f : 0.8f);   // grosse caisse sur les temps 1 et 3
         }
     }
-
-    // Melodie (notes midi et durees en temps) : re mineur, 8 mesures
-    static const struct { int midi; float beats; } MELODY[] = {
-        { 50, 2 }, { 53, 1 }, { 55, 1 },   // re  fa  sol
-        { 57, 3 }, { 57, 1 },              // la ...
-        { 58, 2 }, { 57, 1 }, { 55, 1 },   // sib la sol
-        { 57, 4 },                         // la
-        { 62, 2 }, { 60, 1 }, { 58, 1 },   // re  do  sib
-        { 57, 2 }, { 55, 2 },              // la  sol
-        { 53, 1 }, { 55, 1 }, { 52, 2 },   // fa  sol mi
-        { 50, 4 },                         // re
-    };
-    float t = 0.0f;
-    for (unsigned i = 0; i < sizeof(MELODY)/sizeof(MELODY[0]); i++)
-    {
-        float len = MELODY[i].beats*beat;
-        AddVoice(choir, n, t, len*0.95f, MELODY[i].midi, 0.16f);         // voix principale
-        AddVoice(choir, n, t, len*0.95f, MELODY[i].midi - 12, 0.12f);    // basses a l'octave
-        AddVoice(choir, n, t, len*0.95f, MELODY[i].midi - 7, 0.08f);     // quinte en dessous (couleur medievale)
-        t += len;
-    }
-    // Bourdon re-la tenu sur toute la boucle (deux notes par mesure pour respirer)
-    for (int b = 0; b < bars; b++)
-    {
-        AddVoice(choir, n, b*4*beat, 4*beat*0.97f, 38, 0.07f);
-        AddVoice(choir, n, b*4*beat, 4*beat*0.97f, 45, 0.05f);
-    }
-
-    // Le choeur passe par les formants de la voyelle "a" (bouche ouverte)
-    Reso r1 = { 0 }, r2 = { 0 }, r3 = { 0 };
     float peak = 1e-6f;
-    for (int pass = 0; pass < 2; pass++)   // 2 tours : le 2e part des etats du 1er, la boucle se raccorde sans clic
-        for (int i = 0; i < n; i++)
-        {
-            float x = choir[i];
-            float v = ResoStep(&r1, x, 700.0f, 110.0f, MUSIC_RATE) + 0.7f*ResoStep(&r2, x, 1150.0f, 140.0f, MUSIC_RATE)
-                    + 0.25f*ResoStep(&r3, x, 2600.0f, 220.0f, MUSIC_RATE);
-            if (pass == 1)
-            {
-                drums[i] = drums[i]*0.55f + v*0.65f;   // meme volume moyen pour le tambour et le choeur
-                peak = fmaxf(peak, fabsf(drums[i]));
-            }
-        }
+    for (int i = 0; i < n; i++) peak = fmaxf(peak, fabsf(buf[i]));
 
     // Fichier WAV en memoire : en-tete de 44 octets puis echantillons 16 bits
     int dataBytes = n*2;
-    musicWav = (unsigned char *)MemAlloc(44 + dataBytes);
-    unsigned char *h = musicWav;
+    drumsWav = (unsigned char *)MemAlloc(44 + dataBytes);
+    unsigned char *h = drumsWav;
     #define PUT32(p, v) do { unsigned int x_ = (v); (p)[0] = x_ & 255; (p)[1] = (x_ >> 8) & 255; (p)[2] = (x_ >> 16) & 255; (p)[3] = x_ >> 24; } while (0)
     #define PUT16(p, v) do { (p)[0] = (v) & 255; (p)[1] = ((v) >> 8) & 255; } while (0)
     memcpy(h, "RIFF", 4); PUT32(h + 4, 36 + dataBytes); memcpy(h + 8, "WAVEfmt ", 8);
@@ -351,20 +305,19 @@ static void MusicInit(void)
     memcpy(h + 36, "data", 4); PUT32(h + 40, dataBytes);
     for (int i = 0; i < n; i++)
     {
-        short v = (short)(drums[i]/peak*0.85f*32000.0f);
+        short v = (short)(buf[i]/peak*0.85f*32000.0f);
         PUT16(h + 44 + i*2, (unsigned short)v);
     }
     #undef PUT32
     #undef PUT16
-    MemFree(drums);
-    MemFree(choir);
+    MemFree(buf);
 
-    music = LoadMusicStreamFromMemory(".wav", musicWav, 44 + dataBytes);
-    musicOk = IsMusicValid(music);
-    if (!musicOk) return;
-    music.looping = true;
-    SetMusicVolume(music, 0.4f);
-    PlayMusicStream(music);
+    drums = LoadMusicStreamFromMemory(".wav", drumsWav, 44 + dataBytes);
+    drumsOk = IsMusicValid(drums);
+    if (!drumsOk) return;
+    drums.looping = true;
+    SetMusicVolume(drums, 0.45f);   // ~9 dB sous le chant : present mais en fond
+    PlayMusicStream(drums);
 }
 
 static Sound GenSound(SndId id)
@@ -412,7 +365,8 @@ void AudioInit(void)
 // A appeler a chaque image : raylib remplit le tampon audio de la musique au fur et a mesure
 void AudioUpdate(void)
 {
-    if (musicOk) UpdateMusicStream(music);
+    if (kyrieOk) UpdateMusicStream(kyrie);
+    if (drumsOk) UpdateMusicStream(drums);
 }
 
 // Les alias doivent etre liberes avant le son d'origine dont ils partagent les donnees
@@ -422,8 +376,9 @@ void AudioClose(void)
     {
         for (int i = 0; i < SHOT_VOICES; i++) UnloadSoundAlias(shotVoices[i]);
         for (int i = 0; i < SND_COUNT; i++) UnloadSound(sounds[i]);
-        if (musicOk) UnloadMusicStream(music);
-        MemFree(musicWav);
+        if (kyrieOk) UnloadMusicStream(kyrie);
+        if (drumsOk) UnloadMusicStream(drums);
+        MemFree(drumsWav);
     }
     CloseAudioDevice();
 }
