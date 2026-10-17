@@ -8,6 +8,10 @@
 
 #include <stdlib.h>
 
+#if defined(BR_WEB)
+    #include <emscripten/emscripten.h>   // EM_ASM_INT : petit bout de JavaScript
+#endif
+
 // Vrai si l'on doit afficher / utiliser les controles tactiles.
 // Sur mobile (BR_MOBILE defini a la compilation) c'est toujours le cas.
 // Sur PC, on peut forcer ce mode en lancant le jeu avec la variable
@@ -18,6 +22,12 @@ bool TouchMode(void)
 {
 #if defined(BR_MOBILE)
     return true;
+#elif defined(BR_WEB)
+    // Navigateur : commandes tactiles si l'ecran se pilote au doigt
+    // (telephone, tablette), clavier + souris sinon (ordinateur)
+    static int touch = -1;
+    if (touch < 0) touch = EM_ASM_INT({ return (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ? 1 : 0; });
+    return touch;
 #else
     static int touch = -1;   // -1 = pas encore determine
     if (touch < 0) touch = (getenv("BR_TOUCH") != NULL);
@@ -70,7 +80,22 @@ void UiDrawButton(Rectangle r, const char *label, Color accent)
 // Le bouton est active quand on relache le clic (ou leve le doigt : raylib
 // emule la souris avec le premier doigt) au-dessus de lui. Agir au relachement
 // plutot qu'a l'appui permet d'annuler en glissant hors du bouton.
+// Doigt qui vient de quitter l'ecran (cette image). Necessaire dans le
+// navigateur : raylib n'y transforme pas un toucher en clic de souris
+// (sur Android, si). La souris garde la position du dernier doigt.
+static int touchPrev, touchNow;
+
+void UiUpdate(void)
+{
+    touchPrev = touchNow;
+    touchNow = GetTouchPointCount();
+}
+
 bool UiButtonHit(Rectangle r)
 {
-    return IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(UiMouse(), r);
+    bool released = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+#if defined(BR_WEB)
+    released = released || (touchPrev > 0 && touchNow == 0);
+#endif
+    return released && CheckCollisionPointRec(UiMouse(), r);
 }

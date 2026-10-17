@@ -38,6 +38,10 @@
 
 #include <math.h>     // fminf
 
+#if defined(BR_WEB)
+    #include <emscripten/emscripten.h>   // emscripten_set_main_loop (version navigateur)
+#endif
+
 #if defined(BR_IOS)
     #include "SDL_main.h"   // sur iOS, SDL renomme main() et demarre l'application UIKit
     void IosScreenSize(int *width, int *height);   // ios/platform_ios.c
@@ -46,6 +50,18 @@
 // Point d'entree du programme : cree la fenetre, initialise les modules,
 // fait tourner la boucle principale puis libere tout a la fermeture.
 // argc / argv ne sont pas utilises (aucune option en ligne de commande).
+// Une image du jeu : musique, mise a jour puis dessin
+static void Frame(void)
+{
+    AudioUpdate();   // musique de fond
+    // Duree de la frame en secondes, plafonnee a 50 ms : apres un gel
+    // (chargement, fenetre deplacee...) la simulation ne fait pas un
+    // saut enorme qui ferait traverser les murs ou rater des collisions
+    float dt = fminf(GetFrameTime(), 0.05f);
+    GameUpdate(dt);
+    GameDraw();
+}
+
 int main(int argc, char *argv[])
 {
     (void)argc;   // evite l'avertissement "parametre inutilise"
@@ -62,6 +78,11 @@ int main(int argc, char *argv[])
     // Android : pas de MSAA, beaucoup d'appareils (et l'emulateur) refusent alors de creer le contexte EGL
     InitWindow(width, height, "Zeffalie Come Back");
     SetTargetFPS(60);   // 60 images/s sur mobile pour menager la batterie
+#elif defined(BR_WEB)
+    // Navigateur : le canevas occupe toute la page et suit sa taille
+    // (raylib le redimensionne quand la fenetre du navigateur change).
+    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE);
+    InitWindow(EM_ASM_INT({ return window.innerWidth; }), EM_ASM_INT({ return window.innerHeight; }), "Zeffalie Come Back");
 #else
     // PC / Mac / Linux : fenetre redimensionnable, anticrenelage 4x (MSAA)
     // et synchronisation verticale pour eviter les dechirures d'image
@@ -84,18 +105,15 @@ int main(int argc, char *argv[])
     RenderInit();
     GameInit();
 
+#if defined(BR_WEB)
+    // Navigateur : on ne peut pas boucler nous-memes (la page se figerait) ;
+    // le navigateur appelle Frame() a chaque rafraichissement de l'ecran.
+    emscripten_set_main_loop(Frame, 0, 1);
+#else
     // Boucle principale : tourne tant que la fenetre est ouverte et que le
     // joueur n'a pas demande a quitter depuis le menu (G.quit)
-    while (!WindowShouldClose() && !G.quit)
-    {
-        AudioUpdate();   // musique de fond
-        // Duree de la frame en secondes, plafonnee a 50 ms : apres un gel
-        // (chargement, fenetre deplacee...) la simulation ne fait pas un
-        // saut enorme qui ferait traverser les murs ou rater des collisions
-        float dt = fminf(GetFrameTime(), 0.05f);
-        GameUpdate(dt);
-        GameDraw();
-    }
+    while (!WindowShouldClose() && !G.quit) Frame();
+#endif
 
     // Liberation dans l'ordre inverse de l'initialisation
     GameClose();
