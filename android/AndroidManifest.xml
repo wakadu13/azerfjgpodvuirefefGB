@@ -19,13 +19,16 @@
         android:hasCode="false"
         android:extractNativeLibs="true"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+        <!-- Ecrans tres allonges (20:9 et plus) : pas de bandes noires ni de mode compatibilite -->
+        <meta-data android:name="android.max_aspect" android:value="3.0" />
         <activity
             android:name="android.app.NativeActivity"
             android:exported="true"
-            android:screenOrientation="sensorLandscape"
-            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|keyboard|navigation"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|keyboard|navigation|density|uiMode"
             android:launchMode="singleTask"
-            android:resizeableActivity="false">
+            android:resizeableActivity="true"
+            android:maxAspectRatio="3.0">
             <meta-data android:name="android.app.lib_name" android:value="main" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
