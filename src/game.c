@@ -18,12 +18,16 @@
 #include "waves.h"
 #include "hud.h"
 #include "net.h"
+#include "harpoon.h"
+#include "touch.h"
+#include "ui.h"
 #include "render.h"
 
 #include "raymath.h"
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 Game G;
@@ -34,11 +38,21 @@ static int viewW, viewH;
 static char joinAddress[64] = "192.168.1.";
 static bool netMenu;   // menu ouvert en reseau (la partie continue)
 
+// Souris capturee pour viser (sans objet sur ecran tactile)
+static void CaptureCursor(bool on)
+{
+    if (TouchMode()) return;
+    if (on) DisableCursor();
+    else EnableCursor();
+}
+
 void GameInit(void)
 {
     MapBuild();
     G.state = ST_TITLE;
     G.burgers = START_BURGERS;
+    // Tests automatiques (emulateurs dans GitHub Actions) : partie solo directe
+    if (getenv("BR_AUTOSTART")) GameStart(MODE_SOLO);
 }
 
 void GameClose(void)
@@ -52,6 +66,7 @@ static void ClearWorld(void)
     EnemiesClear();
     EffectsClear();
     PickupsClear();
+    HarpoonsClear();
 }
 
 void GameStart(GameMode mode)
@@ -73,7 +88,8 @@ void GameStart(GameMode mode)
     else if (mode == MODE_SPLIT) PlayersReset(2);
     else PlayersRestart();
     WavesStart(1);
-    DisableCursor();
+    TouchReset();
+    CaptureCursor(true);
 }
 
 void GameOver(const char *reason)
@@ -82,7 +98,7 @@ void GameOver(const char *reason)
     G.state = ST_OVER;
     snprintf(G.overReason, sizeof(G.overReason), "%s", reason);
     if (G.score > G.best) G.best = G.score;
-    EnableCursor();
+    CaptureCursor(false);
 }
 
 static void BackToTitle(const char *message)
@@ -95,7 +111,7 @@ static void BackToTitle(const char *message)
     G.burgers = START_BURGERS;
     snprintf(G.titleMsg, sizeof(G.titleMsg), "%s", message ? message : "");
     netMenu = false;
-    EnableCursor();
+    CaptureCursor(false);
 }
 
 //----------------------------------------------------------------------------------
@@ -116,8 +132,7 @@ void GameNetStateChanged(GameState previous)
 {
     // Cote client : l'etat de la partie vient de changer chez l'hote
     G.mode = MODE_NET;
-    if (G.state == ST_PLAY && !netMenu) DisableCursor();
-    else EnableCursor();
+    CaptureCursor(G.state == ST_PLAY && !netMenu);
     if (G.state == ST_OVER && previous != ST_OVER && G.score > G.best) G.best = G.score;
 }
 
@@ -125,6 +140,7 @@ void GameNetRoundStarted(void)
 {
     // Cote client : l'hote a (re)lance une partie
     EffectsClear();
+    HarpoonsClear();
     for (int i = 0; i < MAX_ENEMIES; i++) enemies[i].predictT = 0;
     Player *me = &players[NetLocalId()];
     WeaponReset(&me->w);
@@ -142,7 +158,8 @@ static bool AnyGamepadPressed(int button)
 
 static bool MenuPressed(void)
 {
-    return IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_P) || AnyGamepadPressed(GAMEPAD_BUTTON_MIDDLE_RIGHT);
+    return IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_P) || IsKeyPressed(KEY_BACK) ||
+           AnyGamepadPressed(GAMEPAD_BUTTON_MIDDLE_RIGHT) || (TouchMode() && TouchPausePressed());
 }
 
 static void UpdateTitleCamera(float dt)
@@ -157,13 +174,28 @@ static void UpdateTitleCamera(float dt)
     titleCam.projection = CAMERA_PERSPECTIVE;
 }
 
+static void ChooseTitle(TitleChoice choice)
+{
+    switch (choice)
+    {
+        case TITLE_SOLO:  GameStart(MODE_SOLO); break;
+        case TITLE_SPLIT: GameStart(MODE_SPLIT); break;
+        case TITLE_HOST:  HostLobby(); break;
+        case TITLE_JOIN:  G.state = ST_JOIN; G.titleMsg[0] = '\0'; break;
+    }
+}
+
 static void UpdateTitle(void)
 {
+    TitleChoice choices[4];
+    int n = HudTitleChoices(choices);
+    for (int i = 0; i < n; i++) if (UiButtonHit(HudTitleButton(i))) { ChooseTitle(choices[i]); return; }
+
     if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ONE) || IsKeyPressed(KEY_KP_1) ||
-        IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || AnyGamepadPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN)) GameStart(MODE_SOLO);
-    else if (IsKeyPressed(KEY_TWO) || IsKeyPressed(KEY_KP_2) || AnyGamepadPressed(GAMEPAD_BUTTON_MIDDLE_RIGHT)) GameStart(MODE_SPLIT);
-    else if (IsKeyPressed(KEY_THREE) || IsKeyPressed(KEY_KP_3)) HostLobby();
-    else if (IsKeyPressed(KEY_FOUR) || IsKeyPressed(KEY_KP_4)) { G.state = ST_JOIN; G.titleMsg[0] = '\0'; }
+        AnyGamepadPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN)) ChooseTitle(TITLE_SOLO);
+    else if (!TouchMode() && (IsKeyPressed(KEY_TWO) || IsKeyPressed(KEY_KP_2) || AnyGamepadPressed(GAMEPAD_BUTTON_MIDDLE_RIGHT))) ChooseTitle(TITLE_SPLIT);
+    else if (IsKeyPressed(KEY_THREE) || IsKeyPressed(KEY_KP_3)) ChooseTitle(TITLE_HOST);
+    else if (IsKeyPressed(KEY_FOUR) || IsKeyPressed(KEY_KP_4)) ChooseTitle(TITLE_JOIN);
     else if (IsKeyPressed(KEY_ESCAPE)) G.quit = true;
 }
 
@@ -174,18 +206,28 @@ static void UpdateJoin(void)
     if (!waiting)
     {
         int len = (int)strlen(joinAddress);
+        int cap = (int)sizeof(joinAddress) - 1;
         for (int c = GetCharPressed(); c > 0; c = GetCharPressed())
-            if (c > 32 && c < 127 && len < (int)sizeof(joinAddress) - 1) { joinAddress[len++] = (char)c; joinAddress[len] = '\0'; }
-        if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && len > 0) joinAddress[len - 1] = '\0';
-        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) NetJoin(joinAddress);
+            if (c > 32 && c < 127 && len < cap) { joinAddress[len++] = (char)c; joinAddress[len] = '\0'; }
+        bool erase = (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE));
+        for (int i = 0; i < 12; i++)   // pave numerique (indispensable sur telephone)
+        {
+            if (!UiButtonHit(HudJoinKey(i))) continue;
+            const char *key = HudJoinKeyLabel(i);
+            if (key[0] == '<') erase = true;
+            else if (len < cap) { joinAddress[len++] = key[0]; joinAddress[len] = '\0'; }
+        }
+        if (erase && len > 0) joinAddress[len - 1] = '\0';
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || UiButtonHit(HudJoinButton(0))) NetJoin(joinAddress);
     }
-    if (IsKeyPressed(KEY_ESCAPE)) BackToTitle(NULL);
+    if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACK) || UiButtonHit(HudJoinButton(1))) BackToTitle(NULL);
 }
 
 static void UpdateLobby(void)
 {
-    if (NetGetRole() == NET_HOST && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER))) GameStart(MODE_NET);
-    else if (IsKeyPressed(KEY_ESCAPE)) BackToTitle(NULL);
+    bool host = NetGetRole() == NET_HOST;
+    if (host && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || UiButtonHit(HudLobbyButton(0)))) GameStart(MODE_NET);
+    else if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACK) || UiButtonHit(HudLobbyButton(1))) BackToTitle(NULL);
 }
 
 static void UpdateWorld(float dt)
@@ -215,6 +257,7 @@ static void UpdateWorld(float dt)
         PickupsAnimate(dt);
         EnemiesClientUpdate(dt);
     }
+    HarpoonsUpdate(dt);
     EffectsUpdate(dt);
     FeedUpdate(dt);
     for (int i = 0; i < numPlayers; i++) if (players[i].local) PlayerUpdateCamera(&players[i], dt);
@@ -223,17 +266,20 @@ static void UpdateWorld(float dt)
 
 static void UpdatePlay(float dt)
 {
+    if (TouchMode()) TouchUpdate();
     if (G.mode == MODE_NET)
     {
         // En reseau, le menu ne met pas la partie en pause
-        if (MenuPressed() || (netMenu && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)))
+        bool toggle = MenuPressed() || (netMenu && UiButtonHit(HudPauseButton(0)));
+        if (toggle)
         {
             netMenu = !netMenu;
-            if (netMenu) EnableCursor(); else DisableCursor();
+            TouchReset();
+            CaptureCursor(!netMenu);
         }
-        if (netMenu && (IsKeyPressed(KEY_Q) || IsKeyPressed(KEY_A))) { BackToTitle(NULL); return; }
+        if (netMenu && (IsKeyPressed(KEY_Q) || IsKeyPressed(KEY_A) || UiButtonHit(HudPauseButton(1)))) { BackToTitle(NULL); return; }
     }
-    else if (MenuPressed()) { G.state = ST_PAUSE; EnableCursor(); return; }
+    else if (MenuPressed()) { G.state = ST_PAUSE; CaptureCursor(false); return; }
 
     UpdateWorld(dt);
 }
@@ -268,16 +314,18 @@ void GameUpdate(float dt)
             UpdatePlay(dt);
             break;
         case ST_PAUSE:
-            if (MenuPressed() || IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { G.state = ST_PLAY; DisableCursor(); }
-            else if (IsKeyPressed(KEY_Q) || IsKeyPressed(KEY_A)) BackToTitle(NULL);
+            if (TouchMode()) TouchUpdate();
+            if (MenuPressed() || UiButtonHit(HudPauseButton(0))) { G.state = ST_PLAY; TouchReset(); CaptureCursor(true); }
+            else if (IsKeyPressed(KEY_Q) || IsKeyPressed(KEY_A) || UiButtonHit(HudPauseButton(1))) BackToTitle(NULL);
             break;
         case ST_OVER:
             EffectsUpdate(dt);
             for (int i = 0; i < MAX_ENEMIES; i++)   // les gloutons continuent de se dandiner
                 if (enemies[i].active && enemies[i].state == ES_WALK) enemies[i].phase += dt*3.0f;
-            if (NetIsAuthority() && (IsKeyPressed(KEY_R) || IsKeyPressed(KEY_ENTER) || AnyGamepadPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN)))
+            if (NetIsAuthority() && (IsKeyPressed(KEY_R) || IsKeyPressed(KEY_ENTER) ||
+                                     AnyGamepadPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN) || UiButtonHit(HudOverButton(0))))
                 GameStart(G.mode);
-            else if (IsKeyPressed(KEY_ESCAPE)) BackToTitle(NULL);
+            else if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACK) || UiButtonHit(HudOverButton(1))) BackToTitle(NULL);
             break;
     }
 
@@ -313,6 +361,7 @@ static void RenderView(Camera3D cam, const Player *viewer, bool withWeapon, int 
         MapDraw(G.time, G.burgers);
         PickupsDraw();
         EnemiesDraw();
+        HarpoonsDraw();
         for (int i = 0; i < numPlayers && inGame; i++)
             if (&players[i] != viewer && players[i].connected) PlayerDrawBody(&players[i]);
         EffectsDraw();
@@ -343,13 +392,19 @@ static void EnsureViewTargets(int w, int h)
 static void DrawSplitScreen(int sw, int sh, bool inGame)
 {
     int w = sw/2;
+    float s = UiScale();
     EnsureViewTargets(w, sh);
     for (int i = 0; i < 2; i++)
     {
         BeginTextureMode(views[i]);
             ClearBackground(SKY_HORIZON);
             RenderView(players[i].cam, &players[i], inGame, w, sh);
-            if (inGame) HudDrawPlayer(&players[i], w, sh, true);
+            if (inGame)
+            {
+                UiBegin();
+                HudDrawPlayer(&players[i], (int)(w/s), (int)(sh/s), true);
+                UiEnd();
+            }
         EndTextureMode();
     }
 
@@ -358,14 +413,17 @@ static void DrawSplitScreen(int sw, int sh, bool inGame)
         for (int i = 0; i < 2; i++)   // les RenderTexture sont a l'envers en Y
             DrawTextureRec(views[i].texture, (Rectangle){ 0, 0, (float)w, (float)-sh }, (Vector2){ (float)(i*w), 0 }, WHITE);
         DrawRectangle(w - 2, 0, 4, sh, (Color){ 20, 20, 20, 255 });
-        if (inGame) HudDrawShared(sw, sh, true);
-        DrawOverlays(sw, sh);
+        UiBegin();
+            if (inGame) HudDrawShared(UiWidth(), UiHeight(), true);
+            DrawOverlays(UiWidth(), UiHeight());
+        UiEnd();
     EndDrawing();
 }
 
 void GameDraw(void)
 {
     int sw = GetScreenWidth(), sh = GetScreenHeight();
+    int vw = UiWidth(), vh = UiHeight();   // interface en unites virtuelles
     bool menuScreen = (G.state == ST_TITLE || G.state == ST_JOIN || G.state == ST_LOBBY);
     bool inGame = (G.state == ST_PLAY || G.state == ST_PAUSE);
 
@@ -380,20 +438,25 @@ void GameDraw(void)
         if (menuScreen)
         {
             RenderView(titleCam, NULL, false, sw, sh);
-            if (G.state == ST_TITLE) HudDrawTitle(sw, sh);
-            else if (G.state == ST_JOIN) HudDrawJoin(sw, sh, joinAddress);
-            else HudDrawLobby(sw, sh);
+            UiBegin();
+                if (G.state == ST_TITLE) HudDrawTitle(vw, vh);
+                else if (G.state == ST_JOIN) HudDrawJoin(vw, vh, joinAddress);
+                else HudDrawLobby(vw, vh);
+            UiEnd();
         }
         else
         {
             Player *me = FirstLocalPlayer();
             RenderView(me->cam, me, inGame, sw, sh);
-            if (inGame)
-            {
-                HudDrawPlayer(me, sw, sh, G.mode == MODE_NET);
-                HudDrawShared(sw, sh, false);
-            }
-            DrawOverlays(sw, sh);
+            UiBegin();
+                if (inGame)
+                {
+                    HudDrawPlayer(me, vw, vh, G.mode == MODE_NET);
+                    HudDrawShared(vw, vh, false);
+                    if (TouchMode() && G.state == ST_PLAY && !netMenu && me->alive) TouchDraw(me);
+                }
+                DrawOverlays(vw, vh);
+            UiEnd();
         }
     EndDrawing();
 }

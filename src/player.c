@@ -13,6 +13,8 @@
 #include "game.h"
 #include "net.h"
 #include "render.h"
+#include "touch.h"
+#include "ui.h"
 #include "util.h"
 
 #include "raymath.h"
@@ -49,6 +51,8 @@ static void SetupSlot(Player *p, int id)
     p->local = keep.local;
     p->ammoGrant = keep.ammoGrant;
     p->ammoGrantSeen = keep.ammoGrantSeen;
+    p->harpoonGrant = keep.harpoonGrant;
+    p->harpoonGrantSeen = keep.harpoonGrantSeen;
     p->respawnCount = keep.respawnCount + 1;
     p->respawnSeen = keep.respawnSeen;
     p->alive = true;
@@ -114,6 +118,9 @@ void PlayerRefillWeapon(Player *p)
     p->w.reloading = false;
     p->w.ammo = MAG_SIZE;
     if (p->w.reserve < 90) p->w.reserve = 90;
+    p->w.harpoonLoaded = true;
+    p->w.harpoonT = 0;
+    if (p->w.harpoons < 3) p->w.harpoons = 3;
 }
 
 void PlayerRespawn(Player *p)
@@ -135,6 +142,12 @@ void PlayerGiveAmmo(Player *p, int amount)
     // transmet un cumul qu'il applique lui-meme.
     if (!p->local) { p->ammoGrant += amount; return; }
     p->w.reserve = (p->w.reserve + amount > MAX_RESERVE) ? MAX_RESERVE : p->w.reserve + amount;
+}
+
+void PlayerGiveHarpoons(Player *p, int amount)
+{
+    if (!p->local) { p->harpoonGrant += amount; return; }
+    p->w.harpoons = (p->w.harpoons + amount > HARPOON_MAX) ? HARPOON_MAX : p->w.harpoons + amount;
 }
 
 const char *PlayerTag(const Player *p)
@@ -219,6 +232,9 @@ static void ReadKeyboardMouse(PlayerInput *in, bool arrowsMove)
     in->reload |= IsKeyPressed(KEY_R);
     in->jump |= IsKeyPressed(KEY_SPACE);
     in->toggleMode |= IsKeyPressed(KEY_B);
+    in->switchWeapon |= IsKeyPressed(KEY_E) || GetMouseWheelMove() != 0.0f;
+    if (IsKeyPressed(KEY_ONE)) in->selectWeapon = WPN_RIFLE;
+    if (IsKeyPressed(KEY_TWO)) in->selectWeapon = WPN_HARPOON;
 }
 
 static void ReadGamepad(PlayerInput *in, int pad, float dt)
@@ -235,6 +251,7 @@ static void ReadGamepad(PlayerInput *in, int pad, float dt)
     in->reload |= IsGamepadButtonPressed(pad, GAMEPAD_BUTTON_RIGHT_FACE_LEFT);   // X / Carre
     in->jump |= IsGamepadButtonPressed(pad, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);     // A / Croix
     in->toggleMode |= IsGamepadButtonPressed(pad, GAMEPAD_BUTTON_RIGHT_FACE_UP); // Y / Triangle
+    in->switchWeapon |= IsGamepadButtonPressed(pad, GAMEPAD_BUTTON_RIGHT_TRIGGER_1); // RB / R1
 }
 
 // Deuxieme joueur au clavier, sans souris
@@ -255,6 +272,7 @@ static void ReadSecondKeyboard(PlayerInput *in, float dt)
     in->reload |= IsKeyPressed(KEY_U);
     in->jump |= IsKeyPressed(KEY_O);
     in->toggleMode |= IsKeyPressed(KEY_N);
+    in->switchWeapon |= IsKeyPressed(KEY_M);
 }
 
 void PlayersReadInput(float dt)
@@ -265,8 +283,14 @@ void PlayersReadInput(float dt)
         if (!p->local) continue;
         PlayerInput *in = &p->in;
         *in = (PlayerInput){ 0 };
+        in->selectWeapon = -1;
 
-        if (G.mode != MODE_SPLIT)
+        if (TouchMode() && G.mode != MODE_SPLIT)
+        {
+            TouchApplyInput(in);
+            ReadGamepad(in, 0, dt);
+        }
+        else if (G.mode != MODE_SPLIT)
         {
             ReadKeyboardMouse(in, true);
             ReadGamepad(in, 0, dt);
@@ -453,7 +477,8 @@ void PlayerDrawBody(const Player *p)
     // HK416 tenu a l'epaule, incline selon le regard
     Matrix gunLocal = MatrixMultiply(MatrixMultiply(MatrixRotateX(p->alive ? p->pitch : 0.0f), MatrixRotateY(PI)),
                                      MatrixTranslate(0.12f, 1.4f, 0.28f));
-    DrawHK416(MatrixMultiply(gunLocal, root), &p->w);
+    if (p->w.active == WPN_HARPOON) DrawHarpoonGun(MatrixMultiply(gunLocal, root), &p->w);
+    else DrawHK416(MatrixMultiply(gunLocal, root), &p->w);
 
     // Bras vers la poignee et le garde-main
     Vector3 grip = Vector3Transform(V3(0, -0.1f, 0.09f), gunLocal);

@@ -27,9 +27,16 @@ typedef struct {
     unsigned char shirt, skin, pants, cap;   // indices dans les palettes de couleurs
     bool hasCap;
 
+    // Projete par le harpon
+    bool launched, airborne;
+    Vector3 vel;
+    float spin, restSpin;      // rotation en vol, puis position couche au sol
+    int killer;                // joueur a crediter pour les gloutons percutes
+    unsigned long long bowled; // gloutons deja percutes pendant ce vol (1 bit chacun)
+
     // Cote client reseau
     Vector3 netPos;
-    float netYaw;
+    float netYaw, netSpin;
     float predictT;   // mort predite localement, en attente de confirmation de l'hote
 } Enemy;
 
@@ -51,5 +58,8 @@ int EnemyRaycast(Ray ray, float *dist, bool *head);
 void EnemyDamage(Enemy *e, float dmg, bool head, Vector3 hitPos, Vector3 dir, Player *shooter);
 // Client reseau : retour visuel immediat, l'hote confirmera les degats.
 void EnemyPredictHit(Enemy *e, float dmg, bool head, Vector3 hitPos, Vector3 dir, Player *shooter);
+// Harpon : tue en un coup et projette le glouton dans la direction du tir.
+void EnemyHarpoon(Enemy *e, Vector3 dir, Player *shooter);
+void EnemyPredictHarpoon(Enemy *e, Vector3 dir, Player *shooter);
 
 #endif

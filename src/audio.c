@@ -33,6 +33,8 @@ static float SoundDuration(SndId id)
         case SND_KILL:  return 0.35f;
         case SND_HORN:  return 1.4f;
         case SND_PICK:  return 0.25f;
+        case SND_HARPOON: return 0.5f;
+        case SND_THUD:  return 0.4f;
         default:        return 0.3f;
     }
 }
@@ -73,6 +75,11 @@ static float SoundSample(SndId id, float t, float dur, float nz, float lp, float
         }
         case SND_PICK:
             return sinf(2*PI*(600.0f + 900.0f*t/dur)*t)*expf(-t*6.0f)*0.4f;
+        case SND_HARPOON:   // "twang" de l'elastique + souffle de la fleche
+            return sinf(2*PI*(110.0f + 40.0f*expf(-t*20.0f))*t)*expf(-t*7.0f)*0.7f
+                 + sinf(2*PI*330.0f*t)*expf(-t*14.0f)*0.25f + lp*expf(-t*9.0f)*0.6f;
+        case SND_THUD:      // impact sourd
+            return sinf(2*PI*(70.0f - 60.0f*t)*t)*expf(-t*9.0f)*1.0f + lp2*expf(-t*12.0f)*1.2f;
         default:
             return 0.0f;
     }

@@ -8,6 +8,7 @@
 #include "enemy.h"
 #include "map.h"
 #include "net.h"
+#include "weapon.h"
 #include "effects.h"
 #include "pickup.h"
 #include "audio.h"
@@ -150,7 +151,7 @@ static int KillPoints(const Enemy *e, bool head)
     return head ? pts*3/2 : pts;
 }
 
-static void KillEnemy(Enemy *e, bool head, Vector3 dir, Player *shooter)
+static void KillEnemy(Enemy *e, bool head, bool harpoon, Vector3 dir, Player *shooter)
 {
     e->state = ES_DEAD;
     e->deadT = 0;
@@ -159,7 +160,8 @@ static void KillEnemy(Enemy *e, bool head, Vector3 dir, Player *shooter)
     shooter->hitKill = true;
     G.score += KillPoints(e, head);
 
-    FeedAdd(head ? ORANGE : RAYWHITE, head ? "%s%s neutralise (HEADSHOT)" : "%s%s neutralise", PlayerTag(shooter), EnemyName(e->type));
+    if (harpoon) FeedAdd(SKYBLUE, "%s%s harponne !", PlayerTag(shooter), EnemyName(e->type));
+    else FeedAdd(head ? ORANGE : RAYWHITE, head ? "%s%s neutralise (HEADSHOT)" : "%s%s neutralise", PlayerTag(shooter), EnemyName(e->type));
     BurstSauce(V3(e->pos.x, 1.2f*e->sz, e->pos.z), dir, e->type == E_BOSS ? 120 : 40);
     SfxWorld(SND_KILL, 1.0f, 0.5f);
     PickupDrop(e->pos);
@@ -179,7 +181,7 @@ void EnemyDamage(Enemy *e, float dmg, bool head, Vector3 hitPos, Vector3 dir, Pl
     shooter->hitHead = head;
     BurstSauce(hitPos, Vector3Negate(dir), head ? 14 : 7);
     SfxWorld(SND_HIT, Randf(0.9f, 1.15f), 0.7f);
-    if (e->hp <= 0) KillEnemy(e, head, dir, shooter);
+    if (e->hp <= 0) KillEnemy(e, head, false, dir, shooter);
 }
 
 void EnemyPredictHit(Enemy *e, float dmg, bool head, Vector3 hitPos, Vector3 dir, Player *shooter)
@@ -202,6 +204,118 @@ void EnemyPredictHit(Enemy *e, float dmg, bool head, Vector3 hitPos, Vector3 dir
         PlaySfx(SND_KILL, 1.0f, 0.5f);
     }
     NetSuppress(false);
+}
+
+//----------------------------------------------------------------------------------
+// Harpon : glouton projete
+//----------------------------------------------------------------------------------
+static void LaunchBody(Enemy *e, Vector3 dir, float power, int killer)
+{
+    Vector3 h = { dir.x, 0, dir.z };
+    h = (Vector3Length(h) < 0.01f) ? V3(sinf(e->yaw + PI), 0, cosf(e->yaw + PI)) : Vector3Normalize(h);
+    float mass = 1.0f/(0.6f + 0.4f*e->sz*e->fat);   // les gros volent moins loin
+    e->vel = Vector3Add(Vector3Scale(h, HARPOON_LAUNCH*power*mass), V3(0, HARPOON_LIFT*power*mass + 2.0f, 0));
+    e->launched = e->airborne = true;
+    e->spin = 0;
+    e->yaw = atan2f(-h.x, -h.z);   // face au tireur : il part a la renverse
+    e->deadT = 0;
+    e->killer = killer;
+    e->bowled = 0;
+}
+
+void EnemyHarpoon(Enemy *e, Vector3 dir, Player *shooter)
+{
+    e->hitFlash = 1.0f;
+    shooter->hitT = 0.25f;
+    shooter->hitHead = false;
+    KillEnemy(e, false, true, dir, shooter);
+    LaunchBody(e, dir, 1.0f, shooter->id);
+    SfxWorld(SND_THUD, 0.9f, 0.9f);
+}
+
+void EnemyPredictHarpoon(Enemy *e, Vector3 dir, Player *shooter)
+{
+    NetSuppress(true);
+    e->hitFlash = 1.0f;
+    e->state = ES_DEAD;
+    e->predictT = 1.5f;
+    shooter->hitT = 0.25f;
+    shooter->hitKill = true;
+    shooter->hitHead = false;
+    BurstSauce(V3(e->pos.x, 1.2f*e->sz, e->pos.z), dir, 40);
+    LaunchBody(e, dir, 1.0f, shooter->id);
+    PlaySfx(SND_KILL, 1.0f, 0.5f);
+    PlaySfx(SND_THUD, 0.9f, 0.9f);
+    NetSuppress(false);
+}
+
+// En vol, le glouton harponne renverse ceux qu'il percute
+static void Bowl(Enemy *e)
+{
+    Vector3 push = Vector3Normalize(V3(e->vel.x, 0, e->vel.z));
+    for (int i = 0; i < MAX_ENEMIES; i++)
+    {
+        Enemy *o = &enemies[i];
+        if (o == e || !o->active || o->state == ES_DEAD || (e->bowled & (1ull << i))) continue;
+        float dx = o->pos.x - e->pos.x, dz = o->pos.z - e->pos.z, rr = EnemyRadius(e) + EnemyRadius(o);
+        if (dx*dx + dz*dz > rr*rr || e->pos.y > 2.2f*o->sz) continue;
+        e->bowled |= 1ull << i;
+        o->pos = Vector3Add(o->pos, push);
+        EnemyDamage(o, HARPOON_BOWL_DMG, false, V3(o->pos.x, 1.2f*o->sz, o->pos.z), push, &players[e->killer]);
+        if (o->state == ES_DEAD) LaunchBody(o, push, 0.6f, e->killer);   // la quille s'envole aussi
+    }
+}
+
+static void UpdateLaunched(Enemy *e, float dt, bool authority)
+{
+    if (!e->airborne)
+    {
+        // Au sol : se couche sur le dos ou le ventre, puis disparait
+        e->deadT += dt;
+        e->spin += (e->restSpin - e->spin)*fminf(1.0f, dt*12.0f);
+        return;
+    }
+    e->deadT += dt;
+    e->vel.y -= 22.0f*dt;
+    e->pos = Vector3Add(e->pos, Vector3Scale(e->vel, dt));
+    e->spin += dt*9.0f/e->sz;
+
+    // S'ecrase contre les murs et les caisses (et glisse le long), sans revenir vers le tireur
+    Vector3 before = e->pos;
+    ResolveCircle(&e->pos, EnemyRadius(e)*0.7f, e->pos.y, 2.0f*e->sz);
+    Vector3 pushed = Vector3Subtract(e->pos, before);
+    float pl = Vector3Length(pushed);
+    if (pl > 1e-4f)
+    {
+        Vector3 n = Vector3Scale(pushed, 1.0f/pl);
+        float into = e->vel.x*n.x + e->vel.z*n.z;
+        if (into < 0) { e->vel.x -= into*n.x; e->vel.z -= into*n.z; }   // on retire la composante vers l'obstacle
+        e->vel.x *= 0.5f;
+        e->vel.z *= 0.5f;
+    }
+    e->pos.x = Clamp(e->pos.x, -ARENA - 8, ARENA + 8);
+    e->pos.z = Clamp(e->pos.z, -ARENA - 8, ARENA + 8);
+    if (authority) Bowl(e);
+
+    if (e->pos.y <= 0 && e->vel.y < 0)
+    {
+        e->pos.y = 0;
+        if (e->vel.y < -5.0f)   // rebondit une fois
+        {
+            e->vel = V3(e->vel.x*0.5f, -e->vel.y*0.3f, e->vel.z*0.5f);
+            PlaySfx(SND_THUD, Randf(0.8f, 1.0f), 0.6f);
+        }
+        else
+        {
+            e->airborne = false;
+            e->vel = V3(0, 0, 0);
+            e->deadT = 0;
+            float m = fmodf(e->spin, 2*PI);
+            if (m < 0) m += 2*PI;
+            e->restSpin = e->spin - m + ((m < PI) ? PI*0.5f : PI*1.5f);
+        }
+    }
+    if (e->deadT > 5.0f) { e->airborne = false; e->pos.y = 0; e->deadT = 0; e->restSpin = PI*0.5f; }
 }
 
 //----------------------------------------------------------------------------------
@@ -351,8 +465,9 @@ void EnemiesUpdate(float dt)
         e->attackCd -= dt;
         if (e->state == ES_DEAD)
         {
-            e->deadT += dt;
-            if (e->deadT > 3.5f) e->active = false;
+            if (e->launched) UpdateLaunched(e, dt, true);
+            else e->deadT += dt;
+            if (!e->airborne && e->deadT > 3.5f) e->active = false;
             continue;
         }
         UpdateEnemy(e, dt);
@@ -373,7 +488,18 @@ void EnemiesClientUpdate(float dt)
         e->hitFlash = fmaxf(0, e->hitFlash - dt*6);
         e->attackAnim = fmaxf(0, e->attackAnim - dt*2.5f);
         e->predictT -= dt;
-        if (e->state == ES_DEAD) { e->deadT += dt; continue; }
+        if (e->state == ES_DEAD)
+        {
+            if (e->launched && e->predictT > 0) UpdateLaunched(e, dt, false);   // vol predit localement
+            else if (e->launched)
+            {
+                e->pos = Vector3Lerp(e->pos, e->netPos, k);
+                e->spin += (e->netSpin - e->spin)*k;
+                if (!e->airborne) e->deadT += dt;
+            }
+            else e->deadT += dt;
+            continue;
+        }
         if (e->state == ES_EAT) e->eatT += dt;
 
         Vector3 old = e->pos;
@@ -482,6 +608,15 @@ static void DrawEnemy(const Enemy *e)
     }
     Matrix root = MatrixMultiply(MatrixMultiply(MatrixMultiply(MatrixScale(s, s, s), MatrixRotateX(-tilt)),
                                  MatrixRotateY(e->yaw)), MatrixTranslate(e->pos.x, -sink, e->pos.z));
+    if (e->launched)
+    {
+        // Projete : tourne autour de son ventre en vol, puis couche au sol
+        float centerH = e->airborne ? 1.1f*s : 0.6f*s*f;
+        sink = (!e->airborne && e->deadT > 1.8f) ? (e->deadT - 1.8f)*0.9f*s : 0.0f;
+        root = MatrixMultiply(MatrixMultiply(MatrixMultiply(MatrixMultiply(MatrixScale(s, s, s), MatrixTranslate(0, -1.1f*s, 0)),
+                              MatrixRotateX(-e->spin)), MatrixRotateY(e->yaw)),
+                              MatrixTranslate(e->pos.x, e->pos.y + centerH - sink, e->pos.z));
+    }
 
     float hf = e->hitFlash;   // flash blanc quand il est touche
     Color skin = Flash(SKINS[e->skin % 4], hf), shirt = Flash(SHIRTS[e->shirt % 7], hf), pants = Flash(PANTS[e->pants % 4], hf);
@@ -510,6 +645,10 @@ static void DrawEnemy(const Enemy *e)
 
     DrawHead(body, e, skin, hf);
     DrawArms(body, e, shirt, skin, sw);
+
+    // Fleche de harpon plantee dans le ventre (taille independante du glouton)
+    if (e->launched)
+        DrawSpear(MatrixMultiply(MatrixMultiply(MatrixScale(1.0f/s, 1.0f/s, 1.0f/s), MatrixTranslate(0, 1.15f, -0.5f*f)), body));
 }
 
 void EnemiesDraw(void)
@@ -518,7 +657,7 @@ void EnemiesDraw(void)
     {
         Enemy *e = &enemies[i];
         if (!e->active) continue;
-        if (e->state != ES_DEAD) DrawBlobShadow(e->pos, EnemyRadius(e)*1.1f);
+        if (e->state != ES_DEAD || e->airborne) DrawBlobShadow(e->pos, EnemyRadius(e)*1.1f);
         DrawEnemy(e);
     }
 }

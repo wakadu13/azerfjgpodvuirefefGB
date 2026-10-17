@@ -1,5 +1,5 @@
 /*
- * weapon.c - Logique et rendu du HK416.
+ * weapon.c - Logique et rendu des armes : HK416 et harpon.
  *
  * Le modele de l'arme est defini dans son propre repere : origine au
  * centre du boitier, canon vers -Z, +Y vers le haut. Le meme modele sert
@@ -14,6 +14,7 @@
 #include "render.h"
 #include "hud.h"
 #include "net.h"
+#include "harpoon.h"
 #include "util.h"
 
 #include "raymath.h"
@@ -23,6 +24,8 @@
 #define MUZZLE_Z      -0.68f
 #define SIGHT_HEIGHT  0.085f   // axe du viseur au-dessus de l'origine
 #define SIGHT_Z       -0.04f
+#define SPEAR_Y       0.04f     // fleche posee sur le dessus du harpon
+#define SPEAR_TIP_Z   -0.97f
 
 static const Color METAL = { 38, 38, 36, 255 };
 static const Color METAL2 = { 55, 54, 50, 255 };
@@ -31,8 +34,11 @@ static const Color POLYMER = { 30, 30, 30, 255 };
 void WeaponReset(Weapon *w)
 {
     *w = (Weapon){ 0 };
+    w->active = WPN_RIFLE;
     w->ammo = MAG_SIZE;
     w->reserve = START_RESERVE;
+    w->harpoonLoaded = true;
+    w->harpoons = HARPOON_START;
 }
 
 //----------------------------------------------------------------------------------
@@ -41,14 +47,16 @@ void WeaponReset(Weapon *w)
 static Vector3 WeaponOffset(const Player *p)
 {
     const Weapon *w = &p->w;
-    Vector3 hip = V3(0.17f, -0.19f, -0.45f);
-    Vector3 ads = V3(0.0f, -SIGHT_HEIGHT, -0.33f);   // point rouge exactement au centre
+    bool harpoon = (w->active == WPN_HARPOON);
+    Vector3 hip = harpoon ? V3(0.16f, -0.17f, -0.42f) : V3(0.17f, -0.19f, -0.45f);
+    // En visant : point rouge (ou fleche du harpon) exactement au centre
+    Vector3 ads = harpoon ? V3(0.0f, -SPEAR_Y - 0.025f, -0.30f) : V3(0.0f, -SIGHT_HEIGHT, -0.33f);
     Vector3 o = Vector3Lerp(hip, ads, w->ads);
     float bobAmt = 1.0f - w->ads*0.85f;
     o.x += sinf(p->bob)*0.012f*bobAmt + w->sway.x;
     o.y += -fabsf(cosf(p->bob))*0.012f*bobAmt + w->sway.y;
     o.z += w->kick*0.06f;
-    o.y -= w->sprintT*0.06f;
+    o.y -= w->sprintT*0.06f + w->switchT*0.25f;
     o.x -= w->sprintT*0.04f;
     return o;
 }
@@ -58,14 +66,20 @@ static Matrix WeaponViewMatrix(const Player *p)
 {
     const Weapon *w = &p->w;
     Vector3 o = WeaponOffset(p);
-    float reloadTilt = w->reloading ? sinf(fminf(w->reloadT/w->reloadDur, 1.0f)*PI) : 0.0f;
-    Vector3 rot = V3(w->kick*0.12f - reloadTilt*0.25f - w->sprintT*0.25f,
+    float reloadTilt = 0.0f;
+    if (w->active == WPN_RIFLE && w->reloading) reloadTilt = sinf(fminf(w->reloadT/w->reloadDur, 1.0f)*PI);
+    if (w->active == WPN_HARPOON && w->harpoonT > 0) reloadTilt = 0.6f*sinf((1.0f - w->harpoonT/HARPOON_RELOAD)*PI);
+    Vector3 rot = V3(w->kick*0.12f - reloadTilt*0.25f - w->sprintT*0.25f - w->switchT*0.6f,
                      w->sprintT*0.7f + reloadTilt*0.2f,
                      reloadTilt*0.5f + w->sprintT*0.35f);
     return MatrixMultiply(MatrixRotateXYZ(rot), MatrixTranslate(o.x, o.y, o.z));
 }
 
-static Vector3 MuzzleView(const Player *p) { return Vector3Transform(V3(0, 0, MUZZLE_Z), WeaponViewMatrix(p)); }
+static Vector3 MuzzleView(const Player *p)
+{
+    Vector3 tip = (p->w.active == WPN_HARPOON) ? V3(0, SPEAR_Y, SPEAR_TIP_Z) : V3(0, 0, MUZZLE_Z);
+    return Vector3Transform(tip, WeaponViewMatrix(p));
+}
 
 static Vector3 ViewToWorld(const Player *p, Vector3 v)
 {
@@ -142,10 +156,63 @@ static void Shoot(Player *p)
     {
         // En reseau, c'est l'hote qui applique les degats
         EnemyPredictHit(&enemies[target], dmg, head, hit, dir, p);
-        NetReportHit(target, dmg, head, hit, dir);
+        NetReportHit(target, dmg, head, hit, dir, HIT_BULLET);
     }
     else if (target >= 0) EnemyDamage(&enemies[target], dmg, head, hit, dir, p);
     else if (hitWorld) BurstSparks(hit, normal);
+}
+
+// Harpon : un tir, puis rechargement automatique s'il reste des fleches
+static void UpdateHarpoonGun(Player *p, float dt)
+{
+    Weapon *w = &p->w;
+    const PlayerInput *in = &p->in;
+    if (w->harpoonT > 0)
+    {
+        w->harpoonT -= dt;
+        if (w->harpoonT <= 0)
+        {
+            w->harpoonT = 0;
+            w->harpoonLoaded = true;
+            PlaySfx(SND_CLICK, 0.6f, 0.7f);
+        }
+        return;
+    }
+    if (!w->harpoonLoaded && w->harpoons > 0 && (in->reload || in->firePressed))
+    {
+        w->harpoons--;
+        w->harpoonT = HARPOON_RELOAD;
+        return;
+    }
+    if (!in->firePressed || w->switchT > 0.2f || p->sprinting) return;
+    if (!w->harpoonLoaded) { PlaySfx(SND_EMPTY, 0.8f, 0.6f); return; }
+
+    HarpoonFire(p);
+    w->harpoonLoaded = false;
+    w->kick = 1.0f;
+    w->recoilPitch += 0.035f;
+    p->shake = fmaxf(p->shake, 0.12f);
+    if (w->harpoons > 0)
+    {
+        w->harpoons--;
+        w->harpoonT = HARPOON_RELOAD;
+    }
+}
+
+static void UpdateWeaponSwitch(Player *p, float dt)
+{
+    Weapon *w = &p->w;
+    WeaponId want = w->active;
+    if (p->in.switchWeapon) want = (w->active == WPN_RIFLE) ? WPN_HARPOON : WPN_RIFLE;
+    if (p->in.selectWeapon >= 0) want = (WeaponId)p->in.selectWeapon;
+    if (want != w->active)
+    {
+        w->active = want;
+        w->switchT = 1.0f;
+        w->reloading = false;   // un rechargement en cours est annule
+        PlaySfx(SND_CLICK, 0.8f, 0.6f);
+    }
+    w->switchT = fmaxf(0, w->switchT - dt/SWITCH_TIME);
 }
 
 void WeaponUpdate(Player *p, float dt)
@@ -161,6 +228,7 @@ void WeaponUpdate(Player *p, float dt)
     w->bloom = fmaxf(0, w->bloom - dt*0.08f);
     if (!p->alive) return;
 
+    UpdateWeaponSwitch(p, dt);
     bool aiming = in->aim && !w->reloading && !p->sprinting;
     w->ads += ((aiming ? 1.0f : 0.0f) - w->ads)*fminf(1.0f, dt*14.0f);
     w->sprintT += ((p->sprinting ? 1.0f : 0.0f) - w->sprintT)*fminf(1.0f, dt*10.0f);
@@ -170,6 +238,8 @@ void WeaponUpdate(Player *p, float dt)
     w->sway.y += (-in->look.y*0.18f - w->sway.y)*fminf(1.0f, dt*8.0f);
     w->sway.x = Clamp(w->sway.x, -0.03f, 0.03f);
     w->sway.y = Clamp(w->sway.y, -0.03f, 0.03f);
+
+    if (w->active == WPN_HARPOON) { UpdateHarpoonGun(p, dt); return; }
 
     if (in->reload) StartReload(w);
     if (in->toggleMode)
@@ -196,7 +266,7 @@ void WeaponUpdate(Player *p, float dt)
 
     if (!in->fire) w->shotThisPress = false;
     bool trigger = w->semi ? (in->fire && !w->shotThisPress) : in->fire;
-    if (!trigger || w->fireT > 0 || p->sprinting) return;
+    if (!trigger || w->fireT > 0 || p->sprinting || w->switchT > 0.2f) return;
 
     if (w->ammo > 0)
     {
@@ -300,6 +370,43 @@ void DrawHK416(Matrix W0, const Weapon *w)
     if (w && w->muzzleT > 0) DrawMuzzleFlash(W0);
 }
 
+void DrawSpear(Matrix frame)
+{
+    // Pointe a l'origine, tige vers +Z
+    const Color steel = { 190, 195, 200, 255 };
+    Seg(frame, V3(0, 0, 0.02f), V3(0, 0, 1.15f), 0.0055f, steel);
+    Ball(frame, V3(0, 0, 0.02f), V3(0.009f, 0.009f, 0.045f), (Color){ 220, 225, 230, 255 });
+    for (int k = -1; k <= 1; k += 2)   // ardillons
+        Box3(frame, V3(0.009f*k, 0, 0.07f), V3(0, 0.5f*k, 0), V3(0.004f, 0.004f, 0.04f), steel);
+}
+
+void DrawHarpoonGun(Matrix W0, const Weapon *w)
+{
+    const Color body = { 45, 50, 55, 255 }, orange = { 240, 120, 30, 255 };
+
+    // Fut, crosse, poignee pistolet, poignee avant
+    Seg(W0, V3(0, 0, 0.3f), V3(0, 0, -0.74f), 0.022f, body);
+    Box3(W0, V3(0, -0.01f, 0.3f), NOROT, V3(0.045f, 0.07f, 0.12f), POLYMER);
+    Box3(W0, V3(0, -0.035f, 0.05f), NOROT, V3(0.04f, 0.05f, 0.14f), body);
+    Box3(W0, V3(0, -0.1f, 0.085f), V3(-0.35f, 0, 0), V3(0.036f, 0.11f, 0.045f), POLYMER);
+    Box3(W0, V3(0, -0.085f, 0.025f), NOROT, V3(0.012f, 0.008f, 0.07f), METAL);
+    Box3(W0, V3(0, -0.045f, -0.35f), NOROT, V3(0.03f, 0.06f, 0.06f), POLYMER);
+    Box3(W0, V3(0, SPEAR_Y - 0.012f, -0.25f), NOROT, V3(0.016f, 0.012f, 0.95f), METAL);   // rail de la fleche
+
+    // Tete du harpon et elastiques orange (tendus quand il est charge)
+    Box3(W0, V3(0, 0.012f, -0.74f), NOROT, V3(0.075f, 0.05f, 0.05f), body);
+    bool loaded = !w || w->harpoonLoaded;
+    float notchZ = loaded ? -0.22f : -0.62f;
+    for (int k = -1; k <= 1; k += 2)
+        Limb(W0, V3(0.032f*k, 0.012f, -0.74f), V3(0.02f*k, SPEAR_Y + 0.006f, notchZ), 0.008f, orange);
+
+    // Fleche chargee (pendant le rechargement, elle glisse depuis l'arriere)
+    float slide = -1.0f;
+    if (loaded) slide = 0.0f;
+    else if (w && w->harpoonT > 0 && w->harpoonT < HARPOON_RELOAD*0.6f) slide = w->harpoonT*1.4f;
+    if (slide >= 0) DrawSpear(MatrixMultiply(MatrixTranslate(0, SPEAR_Y, SPEAR_TIP_Z + slide), W0));
+}
+
 // Mains gantees et avant-bras du joueur (vue a la premiere personne)
 static void DrawHands(Matrix W0, const Weapon *w)
 {
@@ -307,7 +414,9 @@ static void DrawHands(Matrix W0, const Weapon *w)
 
     // Main gauche sur le garde-main, ou qui va chercher le chargeur
     Vector3 handL = V3(-0.005f, -0.045f, -0.33f);
-    if (w->reloading)
+    if (w->active == WPN_HARPOON && w->harpoonT > 0)   // va chercher une fleche
+        handL = Vector3Lerp(handL, V3(-0.06f, 0.0f, 0.2f), sinf((1.0f - w->harpoonT/HARPOON_RELOAD)*PI));
+    if (w->active == WPN_RIFLE && w->reloading)
     {
         bool visible;
         Vector3 mag = MagazinePos(w, &visible);
@@ -347,7 +456,8 @@ void WeaponRenderViewModel(const Player *p, Camera3D worldCam)
     BeginMode3D(vc);
         RenderSetFrame(vc.position, Vector3Normalize(ld), 0.0f, MuzzleView(p), p->w.muzzleT > 0 ? 0.25f : 0.0f);
         Matrix W0 = WeaponViewMatrix(p);
-        DrawHK416(W0, &p->w);
+        if (p->w.active == WPN_HARPOON) DrawHarpoonGun(W0, &p->w);
+        else DrawHK416(W0, &p->w);
         DrawHands(W0, &p->w);
     EndMode3D();
 }
