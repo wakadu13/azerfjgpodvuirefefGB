@@ -12,11 +12,11 @@
 
 typedef enum { E_NORMAL, E_FAST, E_TANK, E_BOSS } EnemyType;
 typedef enum { ES_WALK, ES_GRAB, ES_DEAD } EnemyState;   // ES_GRAB : attrape un poussin au comptoir
-typedef enum { GEAR_HELMET, GEAR_BERET, GEAR_BANDANA, GEAR_NONE, GEAR_COUNT } EnemyGear;
+typedef enum { GEAR_NONE, GEAR_BERET, GEAR_SCARF, GEAR_COUNT } EnemyGear;   // beret glisse sous l'epaulette, foulard
 
-#define CAMO_COUNT   4   // motifs de treillis
+#define CAMO_COUNT   4   // teintes de treillis olive
 #define SKIN_COUNT   4
-#define PAINT_COUNT  3   // styles de grimage
+#define PAINT_COUNT  3   // styles de peinture du visage
 
 #define GRAB_TIME    4.0f               // secondes pour enlever un poussin
 #define GRAB_HOLD    (GRAB_TIME*0.6f)   // ensuite il le tient en main (le tuer le sauve)

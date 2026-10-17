@@ -1,6 +1,6 @@
 # 🐥 BURGER RUSH : Opération HK416
 
-FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (écran partagé) ou **jusqu'à 4 en réseau**. Disponible pour **Windows**, **macOS (Apple Silicon)**, **Linux**, **Android** et **iOS**. Vous incarnez à la première personne un opérateur armé d'un **HK416** qui protège ses **poussins** contre des vagues de **mercenaires en treillis**, le visage grimé et le corps enroulé de **chaînes en métal**, bien décidés à tous les enlever.
+FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (écran partagé) ou **jusqu'à 4 en réseau**. Disponible pour **Windows**, **macOS (Apple Silicon)**, **Linux**, **Android** et **iOS**. Vous incarnez à la première personne un opérateur armé d'un **HK416** qui protège ses **poussins** contre des vagues de **mercenaires en treillis olive**, le visage peint en vert et les yeux cernés de noir, une **chaîne en métal** autour du cou, qui avancent comme des zombies, bras tendus, bien décidés à tous les enlever.
 
 ![Aperçu](docs/apercu.png)
 
@@ -20,10 +20,10 @@ Tout est généré par le code (modèles 3D, sons, textures) : **aucun fichier e
 
 | Ennemi | Description |
 |---|---|
-| **Le Mercenaire** | L'ennemi de base : treillis (forêt, désert, urbain ou jungle), grimage, casque, béret ou bandana, chaîne en bandoulière. |
-| **L'Éclaireur** | Plus petit, rapide, bandana rouge, et il vous fonce dessus. Apparaît dès la vague 2. |
-| **Le Colosse** | Énorme, lent, très résistant, chaînes croisées et cadenas. Dès la vague 3. |
-| **LE CHEF DE GUERRE** | Boss en treillis de nuit, béret noir, épaulettes et cadenas dorés, toutes les 5 vagues. |
+| **Le Mercenaire** | L'ennemi de base : treillis olive aux manches retroussées, brassard orange taché de sang, épaulettes rouges, béret glissé sous l'épaulette ou foulard rouge et noir, visage peint (3 styles), chaîne autour du cou. |
+| **L'Éclaireur** | Plus petit, rapide, foulard rouge et noir, et il vous fonce dessus en courant. Apparaît dès la vague 2. |
+| **Le Colosse** | Énorme, lent, très résistant, chaîne en bandoulière en plus et cadenas. Dès la vague 3. |
+| **LE CHEF DE GUERRE** | Boss géant au treillis plus sombre, béret sur la tête et cadenas doré, toutes les 5 vagues. |
 
 ### Le HK416
 
@@ -172,7 +172,7 @@ Une manette Bluetooth fonctionne aussi.
 | `src/player.c` | Commandes (clavier/souris, manette, 2ᵉ clavier), déplacements, vie, caméra, modèle du coéquipier |
 | `src/weapon.c` | HK416 : tir, recul, rechargement, modèle 3D et mains |
 | `src/enemy.c` | Mercenaires : apparition, IA, dégâts |
-| `src/enemymodel.c` | Modèle 3D des mercenaires : treillis camouflé, grimage, chaînes (un seul mesh généré par carrure) |
+| `src/enemymodel.c` | Modèle 3D des mercenaires : treillis, visage peint, brassard, chaînes (un seul mesh généré par carrure), démarche de zombie |
 | `src/waves.c` | Enchaînement des vagues et récompenses |
 | `src/pickup.c` | Bonus (munitions, salade) |
 | `src/map.c` | Arène, stand des poussins, collisions |
@@ -181,7 +181,7 @@ Une manette Bluetooth fonctionne aussi.
 | `src/hud.c` | Interface 2D et écrans |
 | `src/ui.c` | Échelle de l'interface et boutons (souris / doigt) |
 | `src/touch.c` | Contrôles tactiles (mobile) |
-| `src/render.c` | Shader (dont le motif camouflage) et primitives 3D (cube, sphère, cylindre), poussin |
+| `src/render.c` | Shader (dont l'usure du treillis) et primitives 3D (cube, sphère, cylindre), poussin |
 | `src/audio.c` | Sons générés par le code |
 | `src/config.h` | Toutes les constantes de réglage (vitesses, dégâts, munitions…) |
 

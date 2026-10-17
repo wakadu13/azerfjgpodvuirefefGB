@@ -25,8 +25,8 @@ void RenderSetFrame(Vector3 viewPos, Vector3 lightDir, float fogDensity, Vector3
 void RenderSetEmissive(bool on);   // couleur pleine, sans eclairage
 void RenderSetChecker(bool on);    // motif carrelage / herbe (sol)
 void RenderClearDepth(void);       // vide le depth buffer (passe de l'arme)
-// Motif camouflage (treillis) sur les pieces suivantes : couleur de la piece
-// + taches a, b, c, dans le repere du corps donne.
+// Taches sur le tissu (usure, boue du treillis) pour les pieces suivantes :
+// couleur de la piece + nuances a, b, c, dans le repere du corps donne.
 void RenderSetCamo(bool on, Matrix body, Color a, Color b, Color c);
 
 // Modele construit a partir d'un mesh genere (ex. chaines des ennemis).

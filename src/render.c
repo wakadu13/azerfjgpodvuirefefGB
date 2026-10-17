@@ -1,6 +1,6 @@
 /*
- * render.c - Shader (lambert + brouillard + eclair du canon + motif
- * camouflage) et primitives.
+ * render.c - Shader (lambert + brouillard + eclair du canon + taches sur le
+ * tissu) et primitives.
  */
 #include "render.h"
 #include "config.h"
@@ -59,7 +59,7 @@ static const char *VS_BODY =
     "    gl_Position = mvp*vec4(vertexPosition, 1.0);\n"
     "}\n";
 
-// Treillis : le motif camouflage est un bruit 3D calcule dans le repere du
+// Treillis : les taches (usure, boue) sont un bruit 3D calcule dans le repere du
 // corps (camoSpace), il suit donc le personnage sans "glisser".
 static const char *FS_BODY =
     "VARY vec3 fragPosition;\n"

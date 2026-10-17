@@ -38,7 +38,7 @@ const char *EnemyName(EnemyType type)
     }
 }
 
-float EnemyRadius(const Enemy *e) { return 0.72f*e->sz*e->fat; }
+float EnemyRadius(const Enemy *e) { return 0.42f*e->sz*e->fat; }
 
 int EnemiesAlive(void)
 {
@@ -67,7 +67,7 @@ static void SetStats(Enemy *e, int wave)
         case E_TANK: e->maxHp = 320; e->speed = 1.7f; e->sz = 1.35f; e->fat = 1.35f; e->dmg = 20; break;
         case E_BOSS:
             e->maxHp = 2200 + 300*wave; e->speed = 1.9f; e->sz = 2.3f; e->fat = 1.4f; e->dmg = 35;
-            e->gear = GEAR_BERET;
+            e->gear = GEAR_NONE;   // il porte son beret sur la tete
             break;
         default:     e->maxHp = 90;  e->speed = 2.7f; e->sz = 1.0f;  e->fat = 1.0f;  e->dmg = 12; break;
     }
@@ -105,8 +105,7 @@ void EnemySpawn(EnemyType type, int wave)
     e->skin = (unsigned char)GetRandomValue(0, SKIN_COUNT - 1);
     e->paint = (unsigned char)GetRandomValue(0, PAINT_COUNT - 1);
     e->gear = (unsigned char)GetRandomValue(0, GEAR_COUNT - 1);
-    if (type == E_FAST) e->gear = GEAR_BANDANA;
-    if (type == E_TANK) e->gear = GEAR_HELMET;
+    if (type == E_FAST) e->gear = GEAR_SCARF;
     e->phase = Randf(0, 2*PI);
     e->sideSign = GetRandomValue(0, 1) ? 1.0f : -1.0f;
     SetStats(e, wave);
@@ -127,17 +126,15 @@ int EnemyRaycast(Ray ray, float *dist, bool *head)
         Enemy *e = &enemies[i];
         if (!e->active || e->state == ES_DEAD) continue;
         float s = e->sz;
-        Vector3 fw = V3(sinf(e->yaw), 0, cosf(e->yaw));
 
-        // Trois spheres : tete, ventre (decale vers l'avant), jambes
-        RayCollision c = GetRayCollisionSphere(ray, V3(e->pos.x, 2.02f*s, e->pos.z), 0.31f*s);
+        // Trois spheres (un peu genereuses) : tete, torse, jambes
+        RayCollision c = GetRayCollisionSphere(ray, V3(e->pos.x, 1.78f*s, e->pos.z), 0.17f*s);
         if (c.hit && c.distance < *dist) { *dist = c.distance; hit = i; *head = true; }
 
-        Vector3 belly = Vector3Add(V3(e->pos.x, 1.15f*s, e->pos.z), Vector3Scale(fw, 0.08f*s*e->fat));
-        c = GetRayCollisionSphere(ray, belly, 0.64f*s*e->fat);
+        c = GetRayCollisionSphere(ray, V3(e->pos.x, 1.28f*s, e->pos.z), 0.3f*s*e->fat);
         if (c.hit && c.distance < *dist) { *dist = c.distance; hit = i; *head = false; }
 
-        c = GetRayCollisionSphere(ray, V3(e->pos.x, 0.5f*s, e->pos.z), 0.45f*s*e->fat);
+        c = GetRayCollisionSphere(ray, V3(e->pos.x, 0.55f*s, e->pos.z), 0.3f*s*e->fat);
         if (c.hit && c.distance < *dist) { *dist = c.distance; hit = i; *head = false; }
     }
     return hit;
@@ -326,7 +323,7 @@ static void StealChick(Enemy *e)
 {
     if (G.chicks <= 0 || G.state != ST_PLAY) return;
     G.chicks--;
-    e->fat = fminf(e->fat + 0.15f, e->type == E_BOSS ? 2.0f : 2.2f);
+    e->fat = fminf(e->fat + 0.1f, 1.8f);
     e->hp = fminf(e->hp + e->maxHp*0.3f, e->maxHp*1.6f);
     BurstFeathers(V3(e->pos.x, 1.6f*e->sz, e->pos.z));
     SfxWorld(SND_CHIRP, Randf(0.9f, 1.15f), 0.9f);
@@ -382,7 +379,7 @@ static void UpdateEnemy(Enemy *e, float dt)
     to.y = 0;
     float dist = Vector3Length(to);
 
-    if (goStand && dist < rad + 0.35f)
+    if (goStand && dist < rad + 0.1f)   // assez pres pour se pencher sur le comptoir
     {
         e->state = ES_GRAB;
         e->grabT = 0;
