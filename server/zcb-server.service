@@ -1,0 +1,24 @@
+# Service systemd du serveur de parties de Zeffalie Come Back.
+# Installation (paquet decompresse dans /opt/zcb-serveur) :
+#   sudo cp /opt/zcb-serveur/zcb-server.service /etc/systemd/system/
+#   sudo systemctl enable --now zcb-server
+# Journal : journalctl -u zcb-server -f
+[Unit]
+Description=Serveur de parties de Zeffalie Come Back
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/zcb-serveur
+ExecStart=/opt/zcb-serveur/zcb-server --www /opt/zcb-serveur/www
+Restart=always
+RestartSec=2
+# Utilisateur temporaire sans droits : le serveur n'a besoin que de lire www/
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

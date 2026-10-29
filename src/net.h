@@ -1,11 +1,11 @@
 /*
- * net.h - Multijoueur en reseau (UDP, ou relais claude.ai dans le navigateur),
- * jusqu'a MAX_PLAYERS (50) joueurs.
+ * net.h - Multijoueur en reseau (UDP direct, serveur de parties qui relaie les
+ * paquets, ou relais claude.ai dans le navigateur), jusqu'a MAX_PLAYERS (50) joueurs.
  *
  * Modele hote / clients :
  *  - L'hote fait tourner la partie (mercenaires, vagues, bonus, vie des joueurs)
  *    et envoie l'etat du monde (le meme pour tous) aux clients 30 fois par
- *    seconde (8 dans le navigateur).
+ *    seconde (20 par le serveur de parties, 8 par le salon claude.ai).
  *  - Chaque client deplace et vise lui-meme son joueur (aucune latence
  *    ressentie), detecte ses tirs localement et envoie a l'hote sa position
  *    et ses touches sur les mercenaires.
@@ -44,9 +44,10 @@ typedef enum { EV_TRACER = 1, EV_IMPACT, EV_SPARKS, EV_FEATHERS, EV_SOUND, EV_HA
 // Nature d'une touche signalee par un client : balle de fusil ou harpon
 typedef enum { HIT_BULLET, HIT_HARPOON } NetHitKind;
 
-bool NetSupported(void);              // reseau possible ici (navigateur : seulement sur claude.ai)
-bool NetHost(void);                    // ouvre le port NET_PORT
-bool NetJoin(const char *address);     // "ip" ou "ip:port"
+bool NetSupported(void);              // reseau possible ici (navigateur : claude.ai ou serveur de parties)
+void NetBrowse(float dt, float listEvery); // a chaque image : liste des parties en ligne (rafraichie toutes les listEvery s, 0 = jamais)
+bool NetHost(void);                    // ouvre le port NET_PORT (+ partie declaree au serveur de parties)
+bool NetJoin(const char *address);     // "ip", "ip:port" ou code de partie a 4 chiffres
 void NetStop(void);                    // previent les autres et ferme
 
 void NetReceive(float dt);             // debut de frame : traite les paquets recus

@@ -60,11 +60,10 @@
 // TO_TEXT(MAX_PLAYERS) -> "50" : ecrit la valeur d'une constante dans une chaine
 #define TO_TEXT_(x)  #x
 #define TO_TEXT(x)   TO_TEXT_(x)
-#define NET_VERSION  4             // a incrementer a chaque changement du format des paquets
 #define PACKET_MAX   16384         // taille max d'un paquet (assez pour un SNAPSHOT a 50 joueurs et 160 mercenaires)
 #define MAX_EVENTS   64            // effets en attente d'envoi entre deux paquets (le surplus est perdu)
 #if defined(BR_WEB)
-#define STATE_EVENTS 24            // navigateur : effets par paquet STATE (le paquet doit tenir dans 4 Ko)
+#define STATE_EVENTS 24            // navigateur : effets par paquet STATE (salon claude.ai : le paquet doit tenir dans 4 Ko)
 #else
 #define STATE_EVENTS MAX_EVENTS
 #endif
@@ -293,6 +292,27 @@ bool NetIsClient(void) { return role == NET_CLIENT; }
 bool NetIsAuthority(void) { return role != NET_CLIENT; }
 void NetSuppress(bool on) { suppress = on; }
 
+// Rythme d'envoi selon le chemin des paquets (direct, serveur de parties, salon claude.ai)
+static float SnapshotRate(void)
+{
+    SockLink link = SockLinkKind();
+    if (link == LINK_ROOM) return NET_ROOM_SNAPSHOT_RATE;
+    if (link == LINK_SERVER) return NET_RELAY_SNAPSHOT_RATE;
+    // Hote PC : un peu moins souvent des que des joueurs passent par le serveur de parties
+    // (sa bande passante est partagee ; chaque etat du monde est complet, le lissage fait le reste)
+    for (int i = 1; i < MAX_PLAYERS; i++) if (clients[i].used && clients[i].addr.relay) return NET_RELAY_SNAPSHOT_RATE;
+    return NET_SNAPSHOT_RATE;
+}
+static float StateRate(void)
+{
+    switch (SockLinkKind())
+    {
+        case LINK_ROOM: return NET_ROOM_STATE_RATE;
+        case LINK_SERVER: return NET_RELAY_STATE_RATE;
+        default: return NET_STATE_RATE;
+    }
+}
+
 // Remet a zero toutes les donnees de session avant d'heberger ou de rejoindre une partie
 static void ResetState(void)
 {
@@ -305,18 +325,17 @@ static void ResetState(void)
     error[0] = '\0';
 }
 
-// Devient hote : ouvre le port fixe NET_PORT pour que les clients puissent nous joindre.
+// Le reseau est-il possible ici ? Toujours sur PC / mobile ; dans le navigateur,
+// seulement sur la page claude.ai ou si le serveur de parties est joignable (netsock_web.c).
+bool NetSupported(void) { return SockAvailable(); }
+
+// Menus : liste des parties en ligne (redemandee toutes les listEvery secondes, 0 = pas
+// affichee) et messages du serveur de parties quand aucune partie n'est en cours.
+void NetBrowse(float dt, float listEvery) { SockUpdate(dt, listEvery, role == NET_OFF); }
+
+// Devient hote : ouvre le port fixe NET_PORT pour que les clients puissent nous joindre
+// (et declare la partie au serveur de parties s'il y en a un).
 // L'hote est immediatement "connecte" et occupe l'emplacement de joueur 0.
-// Le reseau est-il possible ici ? Toujours sur PC / mobile ; dans le
-// navigateur, seulement sur la page claude.ai (relais "room", netsock_web.c).
-bool NetSupported(void)
-{
-#if defined(BR_WEB)
-    return SockAvailable();
-#else
-    return true;
-#endif
-}
 
 bool NetHost(void)
 {
@@ -324,7 +343,8 @@ bool NetHost(void)
     ResetState();
     if (!SockOpen(NET_PORT))
     {
-        snprintf(error, sizeof(error), "Impossible d'ouvrir le port %d (deja utilise ?)", NET_PORT);
+        if (SockLinkError()[0]) snprintf(error, sizeof(error), "%s", SockLinkError());
+        else snprintf(error, sizeof(error), "Impossible d'ouvrir le port %d (deja utilise ?)", NET_PORT);
         return false;
     }
     role = NET_HOST;
@@ -350,6 +370,8 @@ bool NetJoin(const char *address)
     if (colon) { *colon = '\0'; port = (unsigned short)atoi(colon + 1); }
     if (!host[0] || !SockResolve(host, port, &hostAddr))
     {
+        if (SockLinkError()[0]) snprintf(error, sizeof(error), "%s", SockLinkError());
+        else
 #if defined(BR_WEB)
         snprintf(error, sizeof(error), "Code invalide : %s (4 chiffres)", address);
 #else
@@ -361,7 +383,7 @@ bool NetJoin(const char *address)
     // Port 0 : le client n'a pas besoin d'un port fixe, le systeme en choisit un libre
     if (!SockOpen(0))
     {
-        snprintf(error, sizeof(error), "Impossible d'ouvrir une socket");
+        snprintf(error, sizeof(error), "%s", SockLinkError()[0] ? SockLinkError() : "Impossible d'ouvrir une socket");
         status = NET_FAILED;
         return false;
     }
@@ -729,7 +751,7 @@ static int BuildSnapshot(uint8_t *data)
     return b.err ? 0 : b.pos;
 }
 
-// Travail de l'hote a chaque fin de frame : detecte les clients muets puis, NET_SNAPSHOT_RATE
+// Travail de l'hote a chaque fin de frame : detecte les clients muets puis, SnapshotRate()
 // fois par seconde, envoie le SNAPSHOT a tous les clients.
 static void HostUpdate(float dt)
 {
@@ -740,9 +762,8 @@ static void HostUpdate(float dt)
         if (clients[i].silence > NET_TIMEOUT) DropClient(i, "a perdu la connexion");
     }
 
-#if defined(BR_WEB)
-    // Navigateur : la partie s'annonce dans la liste des parties de la page
-    // claude.ai (2 fois par seconde ; rien n'est renvoye si rien n'a change)
+    // La partie s'annonce dans la liste des parties en ligne : serveur de parties ou
+    // page claude.ai (2 fois par seconde ; rien n'est renvoye si rien n'a change)
     static float announceT;
     announceT -= dt;
     if (announceT <= 0)
@@ -750,12 +771,11 @@ static void HostUpdate(float dt)
         announceT = 0.5f;
         SockAnnounce(PlayersConnected(), MAX_PLAYERS, G.wave, G.state != ST_LOBBY);
     }
-#endif
 
     // Cadence fixe : on decompte le temps et on n'envoie que quand il est ecoule
     sendT -= dt;
     if (sendT > 0) return;
-    sendT = 1.0f/NET_SNAPSHOT_RATE;
+    sendT = 1.0f/SnapshotRate();
     // static : tampon de 16 Ko reutilise, evite de le poser sur la pile a chaque envoi
     static uint8_t data[PACKET_MAX];
     static NetAddr to[MAX_PLAYERS];
@@ -1110,7 +1130,7 @@ static void ClientSendState(void)
 }
 
 // Travail du client a chaque fin de frame : tentative de connexion, detection de perte
-// de l'hote, puis envoi de STATE NET_STATE_RATE fois par seconde.
+// de l'hote, puis envoi de STATE StateRate() fois par seconde.
 static void ClientUpdate(float dt)
 {
     silenceT += dt;
@@ -1128,8 +1148,14 @@ static void ClientUpdate(float dt)
             SockSend(hostAddr, b.data, b.pos);
             helloT = 0.5f;
         }
+        // Partie du serveur de parties : code inconnu, serveur injoignable...
+        if (SockLinkError()[0])
+        {
+            snprintf(error, sizeof(error), "%s", SockLinkError());
+            status = NET_FAILED;
+        }
         // Abandon apres 8 secondes sans aucune reponse
-        if (silenceT > 8.0f)
+        else if (silenceT > 8.0f)
         {
             snprintf(error, sizeof(error), "Pas de reponse de l'hote (adresse ? pare-feu ?)");
             status = NET_FAILED;
@@ -1137,6 +1163,12 @@ static void ClientUpdate(float dt)
         return;
     }
     if (status != NET_CONNECTED) return;
+    if (SockLinkError()[0])
+    {
+        snprintf(error, sizeof(error), "%s", SockLinkError());
+        status = NET_LOST;
+        return;
+    }
     if (silenceT > NET_TIMEOUT)
     {
         snprintf(error, sizeof(error), "Connexion perdue avec l'hote");
@@ -1145,7 +1177,7 @@ static void ClientUpdate(float dt)
     }
     sendT -= dt;
     if (sendT > 0) return;
-    sendT = 1.0f/NET_STATE_RATE;
+    sendT = 1.0f/StateRate();
     ClientSendState();
 }
 
@@ -1170,7 +1202,23 @@ void NetReceive(float dt)
         if (b.err || magic != NET_MAGIC) continue;
         if (role == NET_HOST) HostReceive(type, &b, from);
         else ClientReceive(type, &b, from);
-        if (role == NET_OFF) break;     // le traitement a pu arreter le reseau (socket fermee)
+        if (role == NET_OFF) return;    // le traitement a pu arreter le reseau (socket fermee)
+    }
+    // Joueurs relayes partis (le serveur de parties previent tout de suite, sans attendre
+    // NET_TIMEOUT) : comme s'ils avaient envoye BYE
+    NetAddr gone;
+    while (role != NET_OFF && SockPeerGone(&gone))
+    {
+        if (role == NET_HOST)
+        {
+            int id = FindClient(gone);
+            if (id >= 0) DropClient(id, "a quitte la partie");
+        }
+        else if (SockAddrEqual(gone, hostAddr) && status != NET_FAILED)
+        {
+            snprintf(error, sizeof(error), "L'hote a ferme la partie");
+            status = status == NET_CONNECTING ? NET_FAILED : NET_LOST;
+        }
     }
 }
 

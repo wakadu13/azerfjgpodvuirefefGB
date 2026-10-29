@@ -7,3 +7,7 @@ screenshot*.png
 # Fichiers caches de macOS
 .DS_Store
 icon_res.o
+
+# Serveur de parties et ses tests
+zcb-server
+test_jeu_relais

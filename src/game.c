@@ -25,6 +25,7 @@
 #include "touch.h"
 #include "ui.h"
 #include "render.h"
+#include "netsock.h"
 
 #include "raymath.h"
 
@@ -44,6 +45,7 @@ static char joinAddress[64] = "";             // code de la partie saisi a l'ecr
 static char joinAddress[64] = "192.168.1.";   // adresse saisie a l'ecran REJOINDRE (pre-remplie : reseau local typique)
 #endif
 static bool netMenu;   // menu ouvert en reseau (la partie continue)
+static int autoJoin;   // partie a rejoindre des que le reseau est pret (lien ?rejoindre=1234)
 
 // Souris capturee pour viser (sans objet sur ecran tactile)
 // on = true : curseur cache et bloque au centre, la souris tourne la camera ;
@@ -61,6 +63,12 @@ void GameInit(void)
     MapBuild();
     G.state = ST_TITLE;
     G.chicks = START_CHICKS;   // les poussins sont visibles sur le stand derriere le menu
+    // Avec un serveur de parties, on rejoint surtout par un code : champ vide
+    // (sinon il est pre-rempli avec le debut d'une adresse du reseau local)
+    if (SockOnlineConfigured()) joinAddress[0] = '\0';
+    // Lien "Rejoindre" de la page web des parties : la partie est rejointe des que possible
+    autoJoin = SockAutoJoinCode();
+    if (autoJoin) snprintf(G.titleMsg, sizeof(G.titleMsg), "Connexion au serveur de parties...");
     // Tests automatiques (emulateurs dans GitHub Actions) : partie solo directe
     if (getenv("BR_AUTOSTART")) GameStart(MODE_SOLO);
 }
@@ -209,6 +217,7 @@ static void UpdateTitleCamera(float dt)
 // Applique le choix fait au menu principal (clic, toucher ou raccourci clavier).
 static void ChooseTitle(TitleChoice choice)
 {
+    autoJoin = 0;   // le joueur a choisi autre chose
     switch (choice)
     {
         case TITLE_SOLO:  GameStart(MODE_SOLO); break;
@@ -221,6 +230,17 @@ static void ChooseTitle(TitleChoice choice)
 // Menu principal : boutons cliquables, puis raccourcis clavier / manette.
 static void UpdateTitle(void)
 {
+    // Partie a rejoindre (?rejoindre=1234) : des que le serveur de parties est joignable
+    if (autoJoin && NetSupported())
+    {
+        snprintf(joinAddress, sizeof(joinAddress), "%04d", autoJoin);
+        autoJoin = 0;
+        G.state = ST_JOIN;
+        G.titleMsg[0] = '\0';
+        NetJoin(joinAddress);
+        return;
+    }
+
     // Boutons : la liste depend de la plateforme (pas d'ecran partage sur telephone)
     TitleChoice choices[4];
     int n = HudTitleChoices(choices);
@@ -264,7 +284,6 @@ static void UpdateJoin(void)
             else if (len < cap) { joinAddress[len++] = key[0]; joinAddress[len] = '\0'; }
         }
         if (erase && len > 0) joinAddress[len - 1] = '\0';
-#if defined(BR_WEB)
         // Clic sur une partie de la liste en ligne : on la rejoint directement avec son code
         SockGame games[HUD_MAX_GAMES];
         int ng = HudJoinGames(games);
@@ -275,7 +294,6 @@ static void UpdateJoin(void)
                 NetJoin(joinAddress);
                 return;
             }
-#endif
         // Entree ou bouton SE CONNECTER : lance la connexion (resultat lu plus tard via NetGetStatus)
         if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || UiButtonHit(HudJoinButton(0))) NetJoin(joinAddress);
     }
@@ -287,6 +305,8 @@ static void UpdateJoin(void)
 static void UpdateLobby(void)
 {
     bool host = NetGetRole() == NET_HOST;
+    // Partie visible dans la liste en ligne, ou seulement par son code (bouton ou touche V)
+    if (HudLobbyHasListToggle() && (IsKeyPressed(KEY_V) || UiButtonHit(HudLobbyListToggle()))) SockSetListed(!SockListed());
     if (host && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || UiButtonHit(HudLobbyButton(0)))) GameStart(MODE_NET);
     else if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACK) || UiButtonHit(HudLobbyButton(1))) BackToTitle(NULL);
 }
@@ -375,6 +395,9 @@ void GameUpdate(float dt)
 {
     G.time += dt;
     UiUpdate();       // suivi des doigts (boutons au toucher dans le navigateur)
+    // Liste des parties en ligne : vite sur l'ecran REJOINDRE, doucement au menu
+    // (nombre de parties affiche a cote du bouton), pas du tout en jeu
+    NetBrowse(dt, G.state == ST_JOIN ? 2.0f : (G.state == ST_TITLE ? 5.0f : 0.0f));
     NetReceive(dt);   // applique d'abord ce qui est arrive par le reseau
 
     // Client : connexion perdue ou refusee

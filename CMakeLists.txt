@@ -21,6 +21,19 @@ file(GLOB SOURCES src/*.c)
 add_executable(zeffalie_come_back ${SOURCES})
 target_link_libraries(zeffalie_come_back PRIVATE raylib)
 
+# Serveur de parties par defaut (liste mondiale + relais) : cmake -DZCB_SERVEUR=jeu.exemple.fr,
+# ou variable d'environnement ZCB_SERVEUR. Vide = aucun.
+set(ZCB_SERVEUR "$ENV{ZCB_SERVEUR}" CACHE STRING "Serveur de parties par defaut")
+if (ZCB_SERVEUR)
+    target_compile_definitions(zeffalie_come_back PRIVATE "ONLINE_SERVER=\"${ZCB_SERVEUR}\"")
+endif()
+if (UNIX)
+    find_package(Threads)   # resolution DNS du serveur de parties en arriere-plan
+    if (Threads_FOUND)
+        target_link_libraries(zeffalie_come_back PRIVATE Threads::Threads)
+    endif()
+endif()
+
 if (UNIX AND NOT APPLE)
     target_link_libraries(zeffalie_come_back PRIVATE m GL)
 elseif (WIN32)

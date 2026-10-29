@@ -25,6 +25,13 @@
   #rotate { display: none; position: fixed; inset: 0; background: var(--bg); align-items: center;
             justify-content: center; text-align: center; padding: 24px; font-size: 20px; z-index: 10; }
   @media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
+  /* Jeu integre a un autre site (iframe) : bouton plein ecran dans le coin */
+  #fs { display: none; position: fixed; top: 8px; right: 8px; z-index: 5; width: 40px; height: 40px;
+        padding: 0; border-radius: 8px; border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.45);
+        color: var(--text); font-size: 22px; line-height: 38px; cursor: pointer; opacity: .75; }
+  #fs:hover, #fs:focus-visible { opacity: 1; }
+  #fs:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .embedded #fs { display: block; }
 </style>
 </head>
 <body>
@@ -36,6 +43,7 @@
 </div>
 <div id="rotate">Tourne ton telephone en mode paysage pour jouer 🔄</div>
 <canvas id="canvas" tabindex="-1"></canvas>
+<button id="fs" type="button" title="Plein écran" aria-label="Plein écran">⛶</button>
 <script>
   // ZNet : reseau du jeu dans le navigateur (utilise par src/netsock_web.c).
   // Sur la page claude.ai du jeu, la capacite "room" relie tous ceux qui ont
@@ -211,6 +219,85 @@
       }
     };
   })();
+
+  // ZWs : WebSocket vers le serveur de parties (server/zcb_server.c), utilisee par
+  // src/netsock_web.c partout sauf sur claude.ai. C'est la que passent la liste
+  // mondiale des parties et les paquets des parties rejointes par leur code : un
+  // message WebSocket = un datagramme du protocole (src/online_proto.h).
+  // Adresse du serveur, dans l'ordre :
+  //  - parametre ?serveur= de la page (nom, nom:port, ou adresse ws:// / wss://) ;
+  //  - serveur choisi a la compilation (ONLINE_SERVER, donne par le C) ;
+  //  - le site qui sert cette page (zcb-server sert lui-meme le jeu).
+  // Les adresses possibles sont essayees l'une apres l'autre ; en cas de coupure,
+  // reconnexion automatique (apres 1 s, puis de plus en plus espacee, 30 s au plus).
+  var ZWs = (function () {
+    var params = new URLSearchParams(location.search);
+    var urls = [], idx = 0, ws = null, isOpen = false, queue = [], epoch = 0, wait = 1000, started = false;
+    function candidates(def) {
+      var list = [];
+      function add(u) { if (u && list.indexOf(u) < 0) list.push(u); }
+      function fromName(h) {
+        h = String(h).trim();
+        if (/^wss?:\/\//i.test(h)) { add(h); return; }
+        if (/^https?:\/\//i.test(h)) {
+          try { var u = new URL(h); add((u.protocol === 'https:' ? 'wss://' : 'ws://') + u.host + u.pathname.replace(/\/?$/, '/') + 'ws'); } catch (e) {}
+          return;
+        }
+        var host = h.replace(/\/.*$/, ''), name = host.replace(/:\d+$/, '');
+        if (!name) return;
+        var direct = 'ws://' + (host === name ? name + ':28016' : host) + '/ws';   // serveur seul, sans HTTPS
+        if (host !== name && location.protocol !== 'https:') add(direct);          // port donne : connexion directe d'abord
+        add('wss://' + name + '/ws');                                              // derriere un proxy HTTPS (Caddy...)
+        if (location.protocol !== 'https:') add(direct);   // une page https n'a pas le droit d'ouvrir du ws://
+      }
+      var p = params.get('serveur') || window.ZCB_SERVEUR || '';
+      if (p) fromName(p);
+      else {
+        if (def) fromName(def);
+        if (/^https?:$/.test(location.protocol))
+          add((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + location.pathname.replace(/[^\/]*$/, '') + 'ws');
+      }
+      return list;
+    }
+    function connect() {
+      if (!urls.length) return;
+      var url = urls[idx % urls.length], s = null, opened = false;
+      try { s = new WebSocket(url); } catch (e) {}
+      if (!s) { idx++; setTimeout(connect, wait); return; }
+      s.binaryType = 'arraybuffer';
+      s.onopen = function () { opened = true; ws = s; isOpen = true; epoch++; wait = 1000; };
+      s.onmessage = function (e) { if (e.data instanceof ArrayBuffer && queue.length < 2048) queue.push(new Uint8Array(e.data)); };
+      s.onclose = function () {
+        if (ws === s) { ws = null; isOpen = false; }
+        if (!opened) idx++;                                  // cette adresse ne repond pas : la suivante
+        var delay = (!opened && idx % urls.length) ? 0 : wait;
+        if (!opened && idx % urls.length === 0) wait = Math.min(wait * 2, 30000);   // toutes essayees : on patiente
+        setTimeout(connect, delay);
+      };
+    }
+    return {
+      // def : serveur choisi a la compilation. Pas sur claude.ai (le salon "room" y sert de relais)
+      start: function (def) {
+        if (started || (window.claude && claude.use)) return;
+        started = true;
+        urls = candidates(def);
+        connect();
+      },
+      configured: function () { return urls.length > 0; },
+      open: function () { return isOpen; },
+      epoch: function () { return epoch; },
+      send: function (bytes) {
+        if (!isOpen || ws.bufferedAmount > (1 << 20)) return false;   // connexion saturee : perdu, comme en UDP
+        try { ws.send(bytes); return true; } catch (e) { return false; }
+      },
+      recv: function () { return queue.shift() || null; },
+      // Pseudo de l'hote (?pseudo=), en ASCII : la police du jeu n'a pas d'accents
+      pseudo: function () {
+        return (params.get('pseudo') || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^\x20-\x7e]/g, '').replace(/\|/g, ' ').trim().slice(0, 20);
+      }
+    };
+  })();
 </script>
 <script>
   var canvas = document.getElementById('canvas');
@@ -225,6 +312,15 @@
     var el = document.documentElement;
     if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(function () {});
   }, { once: true });
+  // Jeu integre a un autre site (dans une iframe, ou ?embed=1) : bouton plein ecran,
+  // et on ne prend pas le clavier tant que le visiteur n'a pas clique dans le jeu
+  var embedded = window.self !== window.top || new URLSearchParams(location.search).has('embed');
+  if (embedded && document.fullscreenEnabled) document.documentElement.classList.add('embedded');
+  document.getElementById('fs').addEventListener('click', function () {
+    if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
+    else document.documentElement.requestFullscreen().catch(function () {});
+    canvas.focus();
+  });
   var Module = {
     canvas: canvas,
     print: function (t) { console.log(t); },
@@ -236,7 +332,7 @@
     onRuntimeInitialized: function () {
       started = true;
       document.getElementById('loading').style.display = 'none';
-      canvas.focus();
+      if (!embedded) canvas.focus();
     },
     // Echec du chargement : on l'ecrit au lieu de rester sur "Chargement..."
     onAbort: function (what) { showError('Le jeu n\'a pas pu demarrer (' + what + ').'); }

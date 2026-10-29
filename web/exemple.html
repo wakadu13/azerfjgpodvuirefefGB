@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intégrer le jeu</title>
+<!--
+  exemple.html - Page de demonstration servie par le serveur de parties (/exemple.html) :
+  le jeu et la liste des parties integres comme sur n'importe quel site, avec le code
+  a copier. Les adresses des exemples sont celles du serveur qui sert cette page.
+-->
+<style>
+  :root { --bg: #f6f7fb; --card: #ffffff; --text: #151a2e; --muted: #5a6385; --line: #dde1ee;
+          --accent: #b8870f; --code-bg: #0f1530; --code-text: #e8ebf7; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #05081a; --card: #0f1530; --text: #f2f2f2; --muted: #9aa3c7; --line: #26305a;
+            --accent: #ffc83c; --code-bg: #0a0f24; --code-text: #e8ebf7; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { margin: 0 0 4px; font-size: clamp(26px, 5vw, 38px); }
+  h2 { margin: 40px 0 8px; font-size: 22px; }
+  p.lead { color: var(--muted); margin: 0 0 24px; }
+  .demo { margin: 16px 0; }
+  pre { position: relative; background: var(--code-bg); color: var(--code-text); border-radius: 10px; padding: 14px 96px 14px 16px;
+        overflow-x: auto; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 8px 0 0; }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; color: inherit; }
+  button.copy { position: absolute; top: 8px; right: 8px; background: transparent; color: var(--code-text);
+                border: 1px solid #3a4470; border-radius: 6px; padding: 4px 10px; font: 13px system-ui, sans-serif; cursor: pointer; }
+  button.copy:focus-visible { outline: 2px solid #ffc83c; outline-offset: 2px; }
+  ul { padding-left: 20px; } li { margin: 4px 0; }
+  code { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 14px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Intégrer Zeffalie Come Back à un site</h1>
+  <p class="lead">Une ligne à coller dans n'importe quelle page (WordPress, Wix, site fait main…). Le jeu se charge au clic,
+    et les joueurs de votre site retrouvent ceux du monde entier : PC, téléphones et navigateurs.</p>
+
+  <h2>1. Le jeu</h2>
+  <pre><code id="code-jeu"></code><button class="copy" type="button" data-copy="code-jeu">Copier</button></pre>
+  <div class="demo" id="demo-jeu"></div>
+
+  <h2>2. La liste des parties en ligne</h2>
+  <p>Mise à jour toutes les 5 secondes. « Rejoindre » lance le jeu de la page (ou l'ouvre dans un nouvel onglet).</p>
+  <pre><code id="code-liste"></code><button class="copy" type="button" data-copy="code-liste">Copier</button></pre>
+  <div class="demo" id="demo-liste"></div>
+
+  <h2>Options</h2>
+  <ul>
+    <li><code>data-pseudo="Toto"</code> : les parties créées depuis votre site s'appellent « Partie de Toto ».</li>
+    <li><code>data-largeur="100%"</code> : largeur maximale (960 px par défaut).</li>
+    <li><code>data-cible="#mon-bloc"</code> : afficher dans un élément existant de la page.</li>
+    <li><code>data-direct="1"</code> : charger le jeu tout de suite, sans l'affiche « JOUER ».</li>
+    <li>Un lien vers votre page avec <code>?rejoindre=1234</code> ouvre directement la partie 1234.</li>
+  </ul>
+
+  <h2>Sans script (iframe seule)</h2>
+  <p>Pour les éditeurs de site qui n'acceptent pas les balises <code>&lt;script&gt;</code> :</p>
+  <pre><code id="code-iframe"></code><button class="copy" type="button" data-copy="code-iframe">Copier</button></pre>
+
+  <h2>Pour les développeurs</h2>
+  <p>La liste des parties en JSON, utilisable depuis n'importe quel site : <a id="api" href="api/parties">api/parties</a>.
+    La page publique : <a href="parties">parties</a> (version compacte à intégrer : <a href="parties?widget=1">parties?widget=1</a>).</p>
+</main>
+
+<script>
+  // Adresses reelles de ce serveur dans les exemples
+  var base = location.origin + location.pathname.replace(/[^\/]*$/, '');
+  document.getElementById('code-jeu').textContent = '<script src="' + base + 'embed.js" async><\/script>';
+  document.getElementById('code-liste').textContent = '<script src="' + base + 'embed.js" data-mode="parties" async><\/script>';
+  document.getElementById('code-iframe').textContent =
+    '<iframe src="' + base + '?embed=1" width="960" height="540" style="border:0;max-width:100%"\n' +
+    '        allow="fullscreen; gamepad; autoplay" allowfullscreen title="Zeffalie Come Back"></iframe>';
+  document.getElementById('api').textContent = base + 'api/parties';
+
+  // Demonstrations : le vrai embed.js de ce serveur
+  [['demo-jeu', {}], ['demo-liste', { mode: 'parties' }]].forEach(function (d) {
+    var s = document.createElement('script');
+    s.src = base + 'embed.js';
+    for (var k in d[1]) s.dataset[k] = d[1][k];
+    document.getElementById(d[0]).appendChild(s);
+  });
+
+  document.querySelectorAll('button.copy').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var text = document.getElementById(b.dataset.copy).textContent;
+      navigator.clipboard.writeText(text).then(function () {
+        b.textContent = 'Copié !';
+        setTimeout(function () { b.textContent = 'Copier'; }, 1500);
+      }).catch(function () {});
+    });
+  });
+</script>
+</body>
+</html>

@@ -36,20 +36,23 @@ Rectangle HudTitleButton(int i);    // i-eme bouton du menu principal (dans l'or
 Rectangle HudPauseButton(int i);    // 0 reprendre, 1 quitter
 Rectangle HudOverButton(int i);     // 0 rejouer, 1 menu
 Rectangle HudLobbyButton(int i);    // 0 lancer (hote), 1 retour
+bool HudLobbyHasListToggle(void);   // l'hote peut choisir si sa partie est visible dans la liste en ligne
+Rectangle HudLobbyListToggle(void); // bouton "VISIBLE DANS LA LISTE : OUI / NON"
 Rectangle HudJoinButton(int i);     // 0 se connecter, 1 retour
 Rectangle HudJoinKey(int i);        // pave numerique (12 touches)
 const char *HudJoinKeyLabel(int i); // texte de la touche i du pave ("0".."9", "." ou "<" pour effacer)
-#if defined(BR_WEB)
+
+// Liste des parties en ligne (serveur de parties, ou page claude.ai dans le navigateur)
 #include "netsock.h"
 #define HUD_MAX_GAMES 12
+bool HudJoinShowsList(void);        // l'ecran REJOINDRE affiche la liste (sinon : adresse IP seulement)
 Rectangle HudJoinGame(int i);       // ligne i de la liste des parties en ligne
 int HudJoinGames(SockGame *out);    // parties affichees (out : HUD_MAX_GAMES cases), renvoie leur nombre
-#endif
 
 void HudDrawTitle(int w, int h);                      // menu principal
 void HudDrawPause(int w, int h, bool network);        // pause (ou menu non bloquant en reseau)
 void HudDrawGameOver(int w, int h);                   // ecran de fin de partie
-void HudDrawJoin(int w, int h, const char *address);  // saisie de l'adresse IP de l'hote
+void HudDrawJoin(int w, int h, const char *address);  // liste des parties, saisie du code / de l'adresse IP
 void HudDrawLobby(int w, int h);                      // salle d'attente reseau
 
 #endif

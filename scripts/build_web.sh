@@ -12,13 +12,17 @@ set -e
 RAYLIB="$1"
 OUT="${2:-build-web}"
 mkdir -p "$OUT"
+# Serveur de parties par defaut (liste mondiale + relais) : variable d'environnement
+# ZCB_SERVEUR ("jeu.exemple.fr" ou "jeu.exemple.fr:28016"), vide = aucun
+SERVER_DEF=""
+if [ -n "${ZCB_SERVEUR:-}" ]; then SERVER_DEF="-DONLINE_SERVER=\"$ZCB_SERVEUR\""; fi
 
-# -DBR_WEB : adaptations navigateur (boucle principale, reseau via claude.ai...)
+# -DBR_WEB : adaptations navigateur (boucle principale, reseau par le serveur de parties ou claude.ai...)
 # USE_GLFW=3 : fenetre/entrees de raylib via la GLFW d'Emscripten
 # ALLOW_MEMORY_GROWTH : la memoire grandit si besoin (musique, meshes)
 # STACK_SIZE : pile de 1 Mo (64 Ko par defaut, un peu juste)
 # SINGLE_FILE : le WebAssembly est integre (base64) dans la page
-emcc -std=gnu99 -O2 -Wall -DBR_WEB -DPLATFORM_WEB -Isrc -I"$RAYLIB/src" src/*.c "$RAYLIB/src/libraylib.a" \
+emcc -std=gnu99 -O2 -Wall -DBR_WEB -DPLATFORM_WEB $SERVER_DEF -Isrc -I"$RAYLIB/src" src/*.c "$RAYLIB/src/libraylib.a" \
     -o "$OUT/index.html" --shell-file web/shell.html \
     -s USE_GLFW=3 -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=67108864 -s STACK_SIZE=1048576 \
     -s ENVIRONMENT=web -s SINGLE_FILE=1

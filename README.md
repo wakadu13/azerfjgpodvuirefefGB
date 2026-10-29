@@ -1,6 +1,6 @@
 # 🐥 ZEFFALIE COME BACK : Opération HK416
 
-FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (écran partagé) ou **jusqu'à 50 en ligne** (liste des parties ouvertes, comme sur un serveur de jeu). Disponible pour **Windows**, **macOS (Apple Silicon)**, **Linux**, **Android** et **iOS**. Vous incarnez à la première personne un opérateur armé d'un **HK416** qui protège ses **poussins** contre des vagues de **mercenaires en treillis olive**, le visage peint en vert et les yeux cernés de noir, une **chaîne en métal** autour du cou, qui avancent comme des zombies, bras tendus, bien décidés à tous les enlever.
+FPS en **C** avec **raylib**, jouable **seul**, **à deux sur le même PC** (écran partagé) ou **jusqu'à 50 en ligne** : la **liste des parties ouvertes dans le monde entier** est tenue par un petit [serveur de parties](#-serveur-de-parties-liste-mondiale) à installer sur votre serveur. Disponible pour **Windows**, **macOS (Apple Silicon)**, **Linux**, **Android**, **iOS** et **dans le navigateur**, que l'on peut [intégrer à n'importe quel site](#-intégrer-le-jeu-à-un-site). Vous incarnez à la première personne un opérateur armé d'un **HK416** qui protège ses **poussins** contre des vagues de **mercenaires en treillis olive**, le visage peint en vert et les yeux cernés de noir, une **chaîne en métal** autour du cou, qui avancent comme des zombies, bras tendus, bien décidés à tous les enlever.
 
 ![Aperçu](docs/apercu.png)
 
@@ -51,8 +51,8 @@ Au menu :
 |---|---|
 | **1** | Solo |
 | **2** | Coop **écran partagé** : 2 joueurs sur le même PC |
-| **3** | **Héberger** / **créer** une partie (jusqu'à 50 joueurs) |
-| **4** | **Rejoindre** une partie (navigateur : **liste des parties en ligne**) |
+| **3** | **Héberger** / **créer** une partie (jusqu'à 50 joueurs) : réseau local **et** en ligne |
+| **4** | **Rejoindre** une partie : **liste des parties en ligne dans le monde entier**, code à 4 chiffres ou adresse IP |
 
 Dans tous les modes à plusieurs :
 
@@ -81,6 +81,19 @@ L'écran se coupe en deux, chaque joueur a sa vue, son HUD et son radar. Contrô
 - Un joueur peut rejoindre une partie déjà commencée.
 
 ![Réseau](docs/reseau.png)
+
+### En ligne, dans le monde entier (serveur de parties)
+
+Avec un [serveur de parties](#-serveur-de-parties-liste-mondiale), chaque partie hébergée apparaît **chez tous les joueurs du monde**, quelle que soit leur plateforme : un PC, un téléphone et un navigateur peuvent jouer ensemble.
+
+1. L'hôte appuie sur **3** : en plus de ses adresses IP (réseau local), la salle d'attente affiche le **code en ligne** de la partie (par ex. `4821`).
+2. Les autres appuient sur **4** : à gauche, la **liste des parties en ligne** (nom, plateforme de l'hôte, joueurs, vague) ; **un clic** pour rejoindre. On peut aussi taper le code (ou une adresse IP pour le réseau local).
+3. Le bouton **VISIBLE PAR TOUS** (ou la touche **V**) de la salle d'attente rend la partie **privée** : elle disparaît de la liste et ne se rejoint plus qu'avec son code.
+
+- Rien à ouvrir sur la box : les joueurs qui rejoignent par la liste ou le code passent par le serveur.
+- Les joueurs du même réseau local que l'hôte peuvent toujours le rejoindre directement par son adresse IP.
+- Le menu principal indique combien de parties sont ouvertes (« REJOINDRE ... - 3 en ligne »).
+- La liste est aussi visible **sans le jeu**, sur la page `/parties` du serveur.
 
 ### En ligne (navigateur, page claude.ai du jeu)
 
@@ -136,8 +149,12 @@ Le jeu tourne aussi **dans un navigateur** (Chrome, Edge, Firefox, Safari), sans
 
 - **Ordinateur** : clavier + souris, comme la version PC. Cliquez dans le jeu pour capturer la souris ; **Échap** la libère et met en pause.
 - **Téléphone / tablette** : commandes tactiles détectées automatiquement, en **paysage** ; le jeu passe en plein écran au premier toucher.
-- Modes **solo** et **écran partagé**, et **parties en ligne jusqu'à 50 joueurs** sur la **page claude.ai du jeu** (voir [En ligne](#en-ligne-navigateur-page-claudeai-du-jeu)). Les messages passent par le relais temps réel de claude.ai (`src/netsock_web.c` + module `ZNet` de `web/shell.html`), avec le même protocole que la version PC.
-- Hors de claude.ai (fichier html, GitHub Pages…), le menu réseau est masqué : les navigateurs n'autorisent pas l'UDP.
+- Modes **solo** et **écran partagé**, et **parties en ligne jusqu'à 50 joueurs** :
+  - avec le **serveur de parties** : mêmes parties que les PC et les téléphones, dans le monde entier (WebSocket, module `ZWs` de `web/shell.html`) ;
+  - sur la **page claude.ai du jeu** : relais temps réel de claude.ai (voir [En ligne](#en-ligne-navigateur-page-claudeai-du-jeu), module `ZNet`).
+  Dans les deux cas, `src/netsock_web.c` fait passer le même protocole que la version PC.
+- Sans serveur de parties ni claude.ai (fichier ouvert d'un double-clic sans serveur configuré), le menu réseau est masqué : les navigateurs n'autorisent pas l'UDP.
+- Paramètres de l'adresse de la page : `?serveur=jeu.exemple.fr` (serveur de parties), `?pseudo=Toto` (nom des parties créées), `?rejoindre=1234` (rejoindre cette partie dès le lancement).
 
 Mise en ligne : à chaque mise à jour de `main`, le jeu est compilé en **un seul fichier** `ZeffalieComeBack-web.html` (dans la release : il suffit de l'ouvrir d'un double-clic, sans serveur) et publié sur **GitHub Pages** si c'est activé (*Settings → Pages → Source : GitHub Actions* ; sur un dépôt privé, GitHub Pages demande un compte payant). Ce fichier peut aussi être déposé tel quel sur n'importe quel hébergeur web (itch.io, Netlify…). Pour le compiler soi-même :
 
@@ -179,6 +196,44 @@ Ouvrez-le sur le téléphone et autorisez l'installation d'applications de sourc
 installez-la avec **[Sideloadly](https://sideloadly.io)** ou **[AltStore](https://altstore.io)** (gratuits, avec votre identifiant Apple).
 Elle doit alors être réinstallée tous les 7 jours (limite Apple pour les comptes gratuits).
 
+## 🌍 Serveur de parties (liste mondiale)
+
+Un petit programme en C, sans dépendance (dossier [`server/`](server/)), à faire tourner sur votre serveur Linux :
+
+- il tient la **liste des parties ouvertes dans le monde entier** ;
+- il **relaie** les paquets entre l'hôte et ceux qui rejoignent par la liste ou le code (aucun port à ouvrir chez l'hôte, et le navigateur joue avec les PC) ;
+- il sert le **jeu web**, la page publique **`/parties`**, la même liste en JSON (**`/api/parties`**) et le script d'intégration **`/embed.js`**.
+
+Démarrage rapide (paquet `ZeffalieComeBack-serveur-linux-x64.tar.gz` ou `-arm64` de la [page des releases](../../releases/latest)) :
+
+```bash
+tar -xzf ZeffalieComeBack-serveur-linux-x64.tar.gz
+```
+
+```bash
+cd zcb-serveur && ./zcb-server
+```
+
+Ouvrez le port **28016 en UDP et TCP**, puis indiquez l'adresse du serveur au jeu : variable **`ZCB_SERVEUR`** du dépôt (*Settings → Secrets and variables → Actions → Variables*, par ex. `jeu.exemple.fr`) ; toutes les versions compilées ensuite l'utilisent. HTTPS avec Caddy, démarrage automatique, options et sécurité : voir **[`server/LISEZMOI.md`](server/LISEZMOI.md)**.
+
+## 🧩 Intégrer le jeu à un site
+
+Une fois le serveur de parties en place (en HTTPS si votre site l'est), une ligne suffit, à l'endroit où le jeu doit apparaître :
+
+```html
+<script src="https://jeu.exemple.fr/embed.js" async></script>
+```
+
+Le jeu s'affiche en 16/9, s'adapte à la largeur de la page et ne se charge qu'au clic sur **JOUER** (bouton plein écran, manette et son autorisés). Les joueurs de votre site retrouvent ceux du monde entier.
+
+La liste des parties en ligne, mise à jour toutes les 5 secondes (« Rejoindre » lance le jeu de la page) :
+
+```html
+<script src="https://jeu.exemple.fr/embed.js" data-mode="parties" async></script>
+```
+
+Options (`data-pseudo`, `data-largeur`, `data-cible`...), version sans script (iframe seule) et démonstration : page **`/exemple.html`** du serveur. Le fichier `ZeffalieComeBack-web.html` des releases peut aussi être déposé tel quel sur n'importe quel hébergeur (avec `?serveur=jeu.exemple.fr` si le serveur n'a pas été réglé à la compilation).
+
 ## 📱 Contrôles tactiles
 
 | Zone | Action |
@@ -200,7 +255,13 @@ Une manette Bluetooth fonctionne aussi.
 | `src/main.c` | Point d'entrée, fenêtre, boucle principale |
 | `src/game.c` | États du jeu (titre, salle d'attente, partie, pause, game over) et écran partagé |
 | `src/net.c` | Multijoueur réseau : l'hôte simule la partie et envoie l'état du monde, chaque client gère son joueur et envoie ses tirs |
-| `src/netsock.c` | Sockets UDP pour Windows, macOS et Linux |
+| `src/netsock.c` | Sockets UDP pour Windows, macOS, Linux et mobiles (joueurs directs + serveur de parties) |
+| `src/netsock_web.c` | Réseau du navigateur : WebSocket vers le serveur de parties, ou relais de claude.ai |
+| `src/online.c` | Client du serveur de parties : déclarer, lister et rejoindre les parties en ligne, relais des paquets |
+| `src/online_proto.h` | Protocole du serveur de parties (partagé par le jeu et le serveur) |
+| `server/zcb_server.c` | Serveur de parties : liste mondiale, relais UDP + WebSocket, pages web (voir `server/LISEZMOI.md`) |
+| `web/shell.html` | Page du jeu dans le navigateur (chargement, modules réseau `ZWs` et `ZNet`, mode intégré) |
+| `web/embed.js` | Script d'intégration à un site (affiche JOUER, liste des parties) |
 | `src/player.c` | Commandes (clavier/souris, manette, 2ᵉ clavier), déplacements, vie, caméra, modèle du coéquipier |
 | `src/weapon.c` | HK416 : tir, recul, rechargement, modèle 3D et mains |
 | `src/enemy.c` | Mercenaires : apparition, IA, dégâts |
@@ -242,6 +303,8 @@ Si raylib est compilée depuis les sources dans un dossier :
 make RAYLIB_PATH=/chemin/vers/raylib
 ```
 
+Serveur de parties par défaut (liste mondiale), pour toutes les méthodes de compilation (`make`, CMake, scripts web / Android / iOS) : variable d'environnement `ZCB_SERVEUR` (par ex. `ZCB_SERVEUR=jeu.exemple.fr make`). Le serveur lui-même : `make serveur`, et ses tests : `make test-serveur`.
+
 Pour régénérer l'exe Windows depuis Linux (MinGW + raylib compilée pour Windows) :
 
 ```bash
@@ -254,6 +317,6 @@ make windows RAYLIB_WIN_PATH=/chemin/vers/raylib-windows
 - **iOS** (sur un Mac avec Xcode) : `scripts/build_ios.sh device` ou `simulator`. raylib n'ayant pas de version iOS officielle, le jeu utilise son backend **SDL2**.
 - Pour tester l'interface tactile sur PC : `BR_TOUCH=1 ./zeffalie_come_back` (la souris joue le rôle du doigt).
 
-Le workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) compile automatiquement les 5 versions à chaque pull request. Il lance aussi le jeu dans un émulateur Android et un simulateur iOS, dont les captures sont publiées sur la branche `ci-captures`.
+Le workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) compile automatiquement les 6 versions et le serveur de parties (testé) à chaque pull request. Il lance aussi le jeu dans un émulateur Android et un simulateur iOS, dont les captures sont publiées sur la branche `ci-captures`.
 
 Sous Linux, les dépendances de raylib sont : `libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl1-mesa-dev`.

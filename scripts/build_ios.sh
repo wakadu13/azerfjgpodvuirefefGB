@@ -50,10 +50,15 @@ done
 # raudio.c est compile en Objective-C : miniaudio a besoin d'AVAudioSession (API Objective-C) sur iOS
 $CC $RLFLAGS -x objective-c -c "$RAYLIB/src/raudio.c" -o "$OUT/obj/rl_raudio.o"   # miniaudio : AVAudioSession
 
+# Serveur de parties par defaut (liste mondiale + relais) : variable d'environnement
+# ZCB_SERVEUR ("jeu.exemple.fr" ou "jeu.exemple.fr:28016"), vide = aucun
+SERVER_DEF=""
+if [ -n "${ZCB_SERVEUR:-}" ]; then SERVER_DEF="-DONLINE_SERVER=\"$ZCB_SERVEUR\""; fi
+
 # 3. Le jeu : BR_MOBILE (controles tactiles) et BR_IOS (code propre a iOS, ex. IosScreenSize)
 echo "=== jeu"
 for f in src/*.c ios/platform_ios.c; do
-    $CC -std=gnu99 -O2 -Wall -DBR_MOBILE -DBR_IOS -I"$RAYLIB/src" -I"$SDLINC" -c "$f" -o "$OUT/obj/$(basename "$f" .c).o"
+    $CC -std=gnu99 -O2 -Wall -DBR_MOBILE -DBR_IOS $SERVER_DEF -I"$RAYLIB/src" -I"$SDLINC" -c "$f" -o "$OUT/obj/$(basename "$f" .c).o"
 done
 
 # 4. Paquet .app : un dossier contenant l'executable, l'Info.plist et les icones

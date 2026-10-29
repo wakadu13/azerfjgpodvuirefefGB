@@ -43,6 +43,11 @@ GLUE="$NDK/sources/android/native_app_glue"
 # Fichiers sources de raylib a compiler (un .o par module)
 RAYLIB_MODULES="rcore rshapes rtextures rtext rmodels raudio utils"
 
+# Serveur de parties par defaut (liste mondiale + relais) : variable d'environnement
+# ZCB_SERVEUR ("jeu.exemple.fr" ou "jeu.exemple.fr:28016"), vide = aucun
+SERVER_DEF=""
+if [ -n "${ZCB_SERVEUR:-}" ]; then SERVER_DEF="-DONLINE_SERVER=\"$ZCB_SERVEUR\""; fi
+
 # Deux architectures : arm64-v8a (vrais telephones) et x86_64 (emulateurs)
 for ABI in arm64-v8a x86_64; do
     case $ABI in
@@ -75,7 +80,7 @@ for ABI in arm64-v8a x86_64; do
     # -u ANativeActivity_onCreate : force a garder ce point d'entree (sinon retire car non reference) ;
     # --no-undefined : erreur au lien si un symbole manque, plutot qu'un plantage au lancement.
     echo "=== jeu pour $ABI"
-    $CC -std=c99 $COMMON -shared -Wall -DBR_MOBILE \
+    $CC -std=c99 $COMMON -shared -Wall -DBR_MOBILE $SERVER_DEF \
         -I"$RAYLIB/src" src/*.c "$OBJ"/*.o -o "$OUT/apk/lib/$ABI/libmain.so" \
         -llog -landroid -lEGL -lGLESv2 -lOpenSLES -lm \
         -u ANativeActivity_onCreate -Wl,--no-undefined

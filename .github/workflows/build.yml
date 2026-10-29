@@ -1,8 +1,9 @@
 name: Build
 
-# Compile le jeu pour macOS (Apple Silicon), Windows, Linux, Android et iOS,
-# puis le lance dans un emulateur Android et un simulateur iOS (captures
-# d'ecran publiees sur la branche "ci-captures").
+# Compile le jeu pour macOS (Apple Silicon), Windows, Linux, Android, iOS et le
+# navigateur, puis le lance dans un emulateur Android et un simulateur iOS
+# (captures d'ecran publiees sur la branche "ci-captures"). Compile et teste aussi
+# le serveur de parties (liste mondiale + relais, dossier server/).
 # - Sur chaque pull request : les executables sont disponibles dans l'onglet
 #   Actions (section "Artifacts" du run).
 # - Sur chaque push sur main : ils sont publies dans la release "latest".
@@ -15,6 +16,13 @@ on:
 
 permissions:
   contents: write
+
+# Serveur de parties utilise par defaut par toutes les versions du jeu (liste mondiale
+# des parties + relais). A regler une fois dans le depot : Settings > Secrets and
+# variables > Actions > Variables > ZCB_SERVEUR = jeu.exemple.fr (vide = aucun serveur).
+# Les scripts de compilation, le Makefile et CMakeLists.txt lisent cette variable.
+env:
+  ZCB_SERVEUR: ${{ vars.ZCB_SERVEUR }}
 
 jobs:
   macos-arm64:
@@ -111,6 +119,67 @@ jobs:
     steps:
       - id: deploy
         uses: actions/deploy-pages@v4
+
+  serveur:
+    name: Serveur de parties (compilation + tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tests : le serveur (UDP, WebSocket, pages web) puis la couche reseau du jeu
+      # (src/netsock.c + src/online.c) qui heberge et rejoint une partie a travers lui
+      - name: Tester
+        run: make test-serveur
+
+      # Executables autonomes (liens statiques) : rien a installer sur le serveur
+      - name: Compiler pour Linux x64 et ARM64
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+          mkdir -p bin
+          gcc -std=c99 -O2 -Wall -Wextra -static -o bin/zcb-server-linux-x64 server/zcb_server.c
+          aarch64-linux-gnu-gcc -std=c99 -O2 -Wall -Wextra -static -o bin/zcb-server-linux-arm64 server/zcb_server.c
+          file bin/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: serveur-bin
+          path: bin
+
+  # Paquet pret a l'emploi : serveur + jeu web + script d'integration a un site
+  serveur-paquet:
+    name: Paquet du serveur de parties
+    needs: [serveur, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: serveur-bin
+          path: bin
+      - uses: actions/download-artifact@v4
+        with:
+          name: ZeffalieComeBack-web
+          path: web-build
+
+      - name: Assembler les paquets
+        run: |
+          mkdir -p dist
+          for arch in x64 arm64; do
+            rm -rf zcb-serveur && mkdir -p zcb-serveur/www
+            cp "bin/zcb-server-linux-$arch" zcb-serveur/zcb-server
+            chmod +x zcb-serveur/zcb-server        # les artefacts perdent le droit d'execution
+            cp web-build/ZeffalieComeBack-web.html zcb-serveur/www/index.html
+            cp web/embed.js web/exemple.html zcb-serveur/www/
+            cp server/LISEZMOI.md server/zcb-server.service zcb-serveur/
+            tar -czf "dist/ZeffalieComeBack-serveur-linux-$arch.tar.gz" zcb-serveur
+          done
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ZeffalieComeBack-serveur
+          path: dist
 
   linux:
     name: Linux (x64)
@@ -242,7 +311,7 @@ jobs:
   release:
     name: Publier la release "latest"
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [macos-arm64, windows, linux, android, ios, web]
+    needs: [macos-arm64, windows, linux, android, ios, web, serveur-paquet]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -259,4 +328,4 @@ jobs:
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest dist/* --target "${{ github.sha }}" \
             --title "ZEFFALIE COME BACK - derniere version" \
-            --notes "Executables compiles automatiquement depuis main : Windows (.exe), macOS Apple Silicon (.zip contenant ZeffalieComeBack.app), Linux (.tar.gz), Android (.apk), iOS (.ipa non signee, a installer avec Sideloadly ou AltStore) et version navigateur (ZeffalieComeBack-web.html : un seul fichier, a ouvrir d'un double-clic)."
+            --notes "Executables compiles automatiquement depuis main : Windows (.exe), macOS Apple Silicon (.zip contenant ZeffalieComeBack.app), Linux (.tar.gz), Android (.apk), iOS (.ipa non signee, a installer avec Sideloadly ou AltStore), version navigateur (ZeffalieComeBack-web.html : un seul fichier, a ouvrir d'un double-clic) et serveur de parties pour Linux (ZeffalieComeBack-serveur-linux-x64 / arm64 : liste mondiale des parties, relais et jeu web a integrer a un site, voir LISEZMOI.md dans le paquet)."

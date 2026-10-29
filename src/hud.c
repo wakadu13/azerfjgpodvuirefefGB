@@ -510,16 +510,36 @@ Rectangle HudTitleButton(int i) { return StackButton(i, UiHeight()*0.40f, 520, 4
 Rectangle HudPauseButton(int i) { return StackButton(i, UiHeight()*0.52f, 420, 50); }
 Rectangle HudOverButton(int i) { return StackButton(i, UiHeight()*0.74f, 360, 46); }
 Rectangle HudLobbyButton(int i) { return StackButton(i, UiHeight() - 120.0f, 360, 46); }
-// Centre horizontal du pave de saisie de l'ecran REJOINDRE : au milieu de
-// l'ecran, ou a droite dans le navigateur (la liste des parties est a gauche).
-static float JoinPadX(void)
+
+// Salle d'attente de l'hote : hauteur de la ligne "en ligne" (code de la partie)
+static float LobbyOnlineY(void)
 {
 #if defined(BR_WEB)
-    return UiWidth()*0.77f;
+    return UiHeight()/12.0f + 70;
 #else
-    return UiWidth()/2.0f;
+    return UiHeight()/12.0f + 134;    // sous les adresses IP du reseau local
 #endif
 }
+
+// Partie declaree au serveur de parties : l'hote choisit si elle apparait dans
+// la liste (sinon on la rejoint seulement en tapant son code)
+bool HudLobbyHasListToggle(void) { return NetGetRole() == NET_HOST && SockOnlineConfigured() && SockOnlineCode() > 0; }
+Rectangle HudLobbyListToggle(void) { return (Rectangle){ UiWidth()/2.0f + 80, LobbyOnlineY() + 24, 330, 34 }; }
+
+// L'ecran REJOINDRE montre la liste des parties en ligne s'il y a un serveur de
+// parties (toujours dans le navigateur : serveur ou page claude.ai)
+bool HudJoinShowsList(void)
+{
+#if defined(BR_WEB)
+    return true;
+#else
+    return SockOnlineConfigured();
+#endif
+}
+
+// Centre horizontal du pave de saisie de l'ecran REJOINDRE : au milieu de
+// l'ecran, ou a droite quand la liste des parties est a gauche.
+static float JoinPadX(void) { return HudJoinShowsList() ? UiWidth()*0.77f : UiWidth()/2.0f; }
 
 Rectangle HudJoinButton(int i)
 {
@@ -538,7 +558,6 @@ Rectangle HudJoinKey(int i)
     return (Rectangle){ x0 + (i % 3)*(kw + gap), y0 + (i/3)*(kh + gap), kw, kh };
 }
 
-#if defined(BR_WEB)
 // Liste des parties en ligne (colonne de gauche de l'ecran REJOINDRE)
 // Largeur : 520 unites au plus, la moitie de l'ecran sur un petit ecran.
 Rectangle HudJoinGame(int i)
@@ -566,7 +585,6 @@ int HudJoinGames(SockGame *out)
         }
     return n < rows ? n : rows;
 }
-#endif
 
 // Texte de la touche i du pave (meme ordre qu'un pave de telephone).
 const char *HudJoinKeyLabel(int i)
@@ -590,20 +608,29 @@ void HudDrawTitle(int w, int h)
 
     // Libelles et raccourcis indexes par TitleChoice
 #if defined(BR_WEB)
-    // Navigateur (page claude.ai) : parties en ligne, jusqu'a MAX_PLAYERS joueurs
-    static const char *labels[] = { "SOLO", "ECRAN PARTAGE (2 joueurs)", "CREER une partie en ligne", "PARTIES EN LIGNE (rejoindre)" };
+    // Navigateur : parties en ligne (serveur de parties ou page claude.ai), jusqu'a MAX_PLAYERS joueurs
+    const char *labels[] = { "SOLO", "ECRAN PARTAGE (2 joueurs)", "CREER une partie en ligne", "PARTIES EN LIGNE (rejoindre)" };
 #else
-    static const char *labels[] = { "SOLO", "ECRAN PARTAGE (2 joueurs)", "HEBERGER une partie reseau", "REJOINDRE une partie reseau" };
+    // Avec un serveur de parties, la partie hebergee est aussi visible dans le monde entier
+    bool online = SockOnlineConfigured();
+    const char *labels[] = { "SOLO", "ECRAN PARTAGE (2 joueurs)",
+                             online ? "HEBERGER une partie (reseau local + en ligne)" : "HEBERGER une partie reseau",
+                             online ? "REJOINDRE une partie (liste en ligne)" : "REJOINDRE une partie reseau" };
 #endif
     static const char *keys[] = { "1", "2", "3", "4" };
     TitleChoice choices[4];
     int n = HudTitleChoices(choices);
+    int onlineGames = SockOnlineTotals(NULL);   // -1 tant que la liste n'est pas arrivee
     for (int i = 0; i < n; i++)
     {
-        char label[80];
+        char label[80], text[64];
+        snprintf(text, sizeof(text), "%s", labels[choices[i]]);
+        // Nombre de parties ouvertes dans le monde, a cote de REJOINDRE
+        if (choices[i] == TITLE_JOIN && onlineGames > 0)
+            snprintf(text, sizeof(text), "%s - %d en ligne", labels[choices[i]], onlineGames);
         // Sur ecran tactile, pas de raccourci clavier a afficher
-        if (TouchMode()) snprintf(label, sizeof(label), "%s", labels[choices[i]]);
-        else snprintf(label, sizeof(label), "[%s]  %s", keys[choices[i]], labels[choices[i]]);
+        if (TouchMode()) snprintf(label, sizeof(label), "%s", text);
+        else snprintf(label, sizeof(label), "[%s]  %s", keys[choices[i]], text);
         UiDrawButton(HudTitleButton(i), label, i == 0 ? (Color){ 255, 200, 60, 255 } : RAYWHITE);   // SOLO mis en avant
     }
 
@@ -674,46 +701,73 @@ void HudDrawGameOver(int w, int h)
     UiDrawButton(HudOverButton(1), "MENU", RAYWHITE);
 }
 
-// Ecran REJOINDRE : champ d'adresse, pave numerique, boutons et etat de la connexion.
-// address = texte saisi jusqu'ici (tenu par game.c).
+// Plateforme de l'hote en abrege (liste des parties)
+static const char *PlatformShort(int p)
+{
+    static const char *names[] = { "", "PC", "Mac", "Linux", "Android", "iOS", "Web" };
+    return (p >= 0 && p < 7) ? names[p] : "";
+}
+
+// Ecran REJOINDRE : liste des parties en ligne (a gauche), champ de saisie et pave
+// numerique, boutons et etat de la connexion. address = texte saisi (tenu par game.c).
 void HudDrawJoin(int w, int h, const char *address)
 {
     int cx = w/2;
     DrawRectangle(0, 0, w, h, (Color){ 0, 0, 0, 150 });
+    if (HudJoinShowsList())
+    {
+        // A gauche la liste des parties en ligne, a droite le code (ou l'adresse IP)
+        TextCenter("PARTIES EN LIGNE", cx, (int)(h*0.04f), 44, (Color){ 255, 200, 60, 255 });
+        int lx = (int)(w*0.30f), px = (int)(w*0.77f);
+        TextCenter("Clique sur une partie pour la rejoindre :", lx, (int)(h*0.13f), 20, LIGHTGRAY);
+        SockGame games[HUD_MAX_GAMES];
+        int ng = HudJoinGames(games);
+        for (int i = 0; i < ng; i++)
+        {
+            const SockGame *g = &games[i];
+            bool full = g->players >= g->maxPlayers;
+            bool other = g->version != NET_VERSION;   // autre version du jeu : l'hote refusera
+            char label[112], name[32];
+            snprintf(name, sizeof(name), "%.24s", g->name);
+            const char *plat = PlatformShort(g->platform);
+            char tag[16] = "";
+            if (plat[0]) snprintf(tag, sizeof(tag), " [%s]", plat);
+            if (other) snprintf(label, sizeof(label), "%s%s   VERSION DIFFERENTE", name, tag);
+            else if (full) snprintf(label, sizeof(label), "%s%s   %d/%d  PLEINE", name, tag, g->players, g->maxPlayers);
+            else if (g->playing) snprintf(label, sizeof(label), "%s%s   %d/%d  vague %d", name, tag, g->players, g->maxPlayers, g->wave);
+            else snprintf(label, sizeof(label), "%s%s   %d/%d  attente", name, tag, g->players, g->maxPlayers);
+            Rectangle r = HudJoinGame(i);
+            // Libelle plus petit que sur un bouton normal : la ligne est longue
+            bool off = full || other;
+            bool hover = !TouchMode() && CheckCollisionPointRec(UiMouse(), r);
+            DrawRectangleRounded(r, 0.3f, 6, (Color){ 15, 15, 20, hover ? 230 : 190 });
+            DrawRectangleRoundedLinesEx(r, 0.3f, 6, 2.0f, off ? GRAY : (Color){ 120, 200, 255, 255 });
+            TextCenter(label, (int)(r.x + r.width/2), (int)r.y + 12, 18, off ? GRAY : RAYWHITE);
+        }
+        if (ng == 0)
+        {
+            int ty = (int)(h*0.24f);
+            if (SockOnlineTotals(NULL) < 0 && SockLinkKind() != LINK_ROOM)
+                TextCenter("Recherche des parties en ligne...", lx, ty, 20, GRAY);
+            else
+            {
+                TextCenter("Aucune partie ouverte pour l'instant.", lx, ty, 20, GRAY);
+                TextCenter("Cree la tienne depuis le menu : les autres", lx, ty + 30, 18, GRAY);
+                TextCenter("la verront apparaitre ici.", lx, ty + 54, 18, GRAY);
+            }
+        }
 #if defined(BR_WEB)
-    // Navigateur : a gauche la liste des parties en ligne, a droite le code
-    TextCenter("PARTIES EN LIGNE", cx, (int)(h*0.04f), 44, (Color){ 255, 200, 60, 255 });
-    int lx = (int)(w*0.30f), px = (int)(w*0.77f);
-    TextCenter("Clique sur une partie pour la rejoindre :", lx, (int)(h*0.13f), 20, LIGHTGRAY);
-    SockGame games[HUD_MAX_GAMES];
-    int ng = HudJoinGames(games);
-    for (int i = 0; i < ng; i++)
-    {
-        const SockGame *g = &games[i];
-        bool full = g->players >= g->maxPlayers;
-        char label[96];
-        if (full) snprintf(label, sizeof(label), "%s   %d/%d  PLEINE", g->name, g->players, g->maxPlayers);
-        else if (g->playing) snprintf(label, sizeof(label), "%s   %d/%d  vague %d", g->name, g->players, g->maxPlayers, g->wave);
-        else snprintf(label, sizeof(label), "%s   %d/%d  attente", g->name, g->players, g->maxPlayers);
-        Rectangle r = HudJoinGame(i);
-        // Libelle plus petit que sur un bouton normal : la ligne est longue
-        bool hover = !TouchMode() && CheckCollisionPointRec(UiMouse(), r);
-        DrawRectangleRounded(r, 0.3f, 6, (Color){ 15, 15, 20, hover ? 230 : 190 });
-        DrawRectangleRoundedLinesEx(r, 0.3f, 6, 2.0f, full ? GRAY : (Color){ 120, 200, 255, 255 });
-        TextCenter(label, (int)(r.x + r.width/2), (int)r.y + 11, 20, full ? GRAY : RAYWHITE);
-    }
-    if (ng == 0)
-    {
-        TextCenter("Aucune partie ouverte pour l'instant.", lx, (int)(h*0.24f), 20, GRAY);
-        TextCenter("Cree la tienne depuis le menu : les autres", lx, (int)(h*0.24f) + 30, 18, GRAY);
-        TextCenter("la verront apparaitre ici.", lx, (int)(h*0.24f) + 54, 18, GRAY);
-    }
-    TextCenter("... ou tape son code :", px, (int)(h*0.13f), 20, LIGHTGRAY);
-    cx = px;
+        TextCenter("... ou tape son code :", px, (int)(h*0.13f), 20, LIGHTGRAY);
 #else
-    TextCenter("REJOINDRE UNE PARTIE", cx, (int)(h*0.04f), 44, (Color){ 255, 200, 60, 255 });
-    TextCenter("Adresse IP de l'hote (affichee sur son ecran) :", cx, (int)(h*0.13f), 20, LIGHTGRAY);
+        TextCenter("... ou son code / l'IP de l'hote :", px, (int)(h*0.13f), 20, LIGHTGRAY);
 #endif
+        cx = px;
+    }
+    else
+    {
+        TextCenter("REJOINDRE UNE PARTIE", cx, (int)(h*0.04f), 44, (Color){ 255, 200, 60, 255 });
+        TextCenter("Adresse IP de l'hote (affichee sur son ecran) :", cx, (int)(h*0.13f), 20, LIGHTGRAY);
+    }
 
     // Champ de saisie
     int bw = 280;
@@ -736,9 +790,15 @@ void HudDrawJoin(int w, int h, const char *address)
     else if (NetGetRole() == NET_CLIENT && st == NET_CONNECTED) TextCenter("Connecte ! En attente de l'hote...", cx, sy, 20, GREEN);
     else if (NetError()[0]) TextCenter(NetError(), cx, sy, 20, (Color){ 255, 100, 80, 255 });
 #if defined(BR_WEB)
-    TextCenter("Chaque joueur ouvre la meme page du jeu sur claude.ai, connecte a son compte.", w/2, h - 24, 16, GRAY);
+    if (SockLinkKind() == LINK_ROOM)
+        TextCenter("Chaque joueur ouvre la meme page du jeu sur claude.ai, connecte a son compte.", w/2, h - 24, 16, GRAY);
+    else
+        TextCenter("Parties du monde entier : PC, telephones et navigateurs jouent ensemble.", w/2, h - 24, 16, GRAY);
 #else
-    TextCenter("Meme reseau Wi-Fi que l'hote (ou port UDP 27016 ouvert chez lui).", cx, h - 24, 16, GRAY);
+    if (HudJoinShowsList())
+        TextCenter("Code a 4 chiffres : partie en ligne.   Adresse IP : reseau local (ou port UDP 27016 ouvert chez l'hote).", w/2, h - 24, 16, GRAY);
+    else
+        TextCenter("Meme reseau Wi-Fi que l'hote (ou port UDP 27016 ouvert chez lui).", cx, h - 24, 16, GRAY);
 #endif
 }
 
@@ -754,25 +814,45 @@ void HudDrawLobby(int w, int h)
 
     if (host)
     {
-        // Adresses IP locales de cette machine (2 au maximum affichees)
-        char ips[4][40];
+        float oy = LobbyOnlineY();
+        bool online = true;     // la partie a un code en ligne (serveur de parties ou page claude.ai)
+#if defined(BR_WEB)
+        TextCenter("Ta partie apparait dans PARTIES EN LIGNE chez tous les joueurs. Son code :", cx, (int)oy, 20, LIGHTGRAY);
+#else
+        // Reseau local : adresses IP de cette machine (2 au maximum), sur une ligne
+        char ips[4][40], line[100] = "";
         int n = SockLocalIPs(ips, 4);
-#if defined(BR_WEB)
-        TextCenter("Ta partie apparait dans PARTIES EN LIGNE chez tous les joueurs. Son code :", cx, y + 70, 20, LIGHTGRAY);
-#else
-        TextCenter("Les autres joueurs choisissent REJOINDRE et tapent :", cx, y + 70, 20, LIGHTGRAY);
+        for (int i = 0; i < n && i < 2; i++)
+        {
+            if (i > 0) strncat(line, "   ou   ", sizeof(line) - strlen(line) - 1);
+            strncat(line, ips[i], sizeof(line) - strlen(line) - 1);
+        }
+        TextCenter("Reseau local : les autres joueurs choisissent REJOINDRE et tapent", cx, y + 66, 18, LIGHTGRAY);
+        TextCenter(n > 0 ? line : "(adresse IP introuvable)", cx, y + 88, 28, n > 0 ? RAYWHITE : GRAY);
+        online = SockOnlineConfigured();
+        if (online) TextCenter("Par Internet, dans le monde entier : la liste des parties en ligne, ou le code", cx, (int)oy, 18, LIGHTGRAY);
+        else
+        {
+            snprintf(buf, sizeof(buf), "Par Internet : port UDP %d a ouvrir sur la box (redirection de port)", NET_PORT);
+            TextCenter(buf, cx, (int)oy, 16, GRAY);
+        }
 #endif
-        for (int i = 0; i < n && i < 2; i++) TextCenter(ips[i], cx, y + 98 + i*34, 32, RAYWHITE);
-        if (n == 0) TextCenter("(adresse IP introuvable)", cx, y + 98, 26, GRAY);
-        // Descend d'autant de lignes que d'adresses affichees (1 ligne si aucune)
-        y += 98 + (n > 0 ? (n < 2 ? n : 2) : 1)*34;
-#if defined(BR_WEB)
-        snprintf(buf, sizeof(buf), "(code de la partie, sur la page claude.ai du jeu)");
-#else
-        snprintf(buf, sizeof(buf), "(port UDP %d)", NET_PORT);
-#endif
-        TextCenter(buf, cx, y, 16, GRAY);
-        y += 28;
+        if (online)
+        {
+            int code = SockOnlineCode();
+            const char *info = SockOnlineInfo();
+            if (code > 0)
+            {
+                snprintf(buf, sizeof(buf), "%04d", code);
+                TextCenter(buf, cx, (int)oy + 24, 32, GOLD_TEXT);
+            }
+            // Pas de code (connexion en cours, serveur injoignable...) ou probleme apres coup
+            if (info[0]) TextCenter(info, cx, (int)oy + (code > 0 ? 58 : 30), 18, (Color){ 255, 150, 90, 255 });
+            if (HudLobbyHasListToggle())
+                UiDrawButton(HudLobbyListToggle(), SockListed() ? "VISIBLE PAR TOUS : OUI" : "PRIVEE (code seulement)",
+                             SockListed() ? (Color){ 120, 200, 255, 255 } : GRAY);
+        }
+        y = (int)oy + 78;
     }
     else y += 90;
 
